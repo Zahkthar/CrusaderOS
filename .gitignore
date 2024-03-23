@@ -1,0 +1,8 @@
+# IDE directories
+.vscode
+
+# Build directories and files
+/limine
+/ovmf
+*.iso
+*.hdd
