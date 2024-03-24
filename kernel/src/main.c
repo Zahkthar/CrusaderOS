@@ -4,15 +4,36 @@
 
 #include <limine.h>
 
-#include "asm.h"
-#include "graphics/framebuffer.h"
-#include "graphics/colors.h"
+#include "sys/cpu.h"
+#include "driver/serial.h"
+
+// Limine requests
 
 static volatile LIMINE_BASE_REVISION(1);
 
-static volatile struct limine_framebuffer_request framebuffer_request =
-    {.id = LIMINE_FRAMEBUFFER_REQUEST,
-     .revision = 0};
+static volatile struct limine_framebuffer_request fb_request = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0};
+
+static volatile struct limine_hhdm_request hhdm_request = {
+    .id = LIMINE_HHDM_REQUEST,
+    .revision = 0};
+
+static volatile struct limine_memmap_request mm_request = {
+    .id = LIMINE_MEMMAP_REQUEST,
+    .revision = 0};
+
+static volatile struct limine_rsdp_request rsdp_request = {
+    .id = LIMINE_RSDP_REQUEST,
+    .revision = 0};
+
+static volatile struct limine_kernel_address_request kernel_addr_request = {
+    .id = LIMINE_KERNEL_ADDRESS_REQUEST,
+    .revision = 0};
+
+static volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST,
+    .revision = 0};
 
 void kernel_main(void)
 {
@@ -21,24 +42,18 @@ void kernel_main(void)
         hcf();
     }
 
-    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1)
+    // Assure that we have a framebuffer
+    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1)
     {
         hcf();
     }
 
-    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+    struct limine_framebuffer *framebuffer = fb_request.response->framebuffers[0];
+    (void)framebuffer;
 
-    framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
-    framebuffer_drawRect(framebuffer, (Rect){250, 50, 100, 100}, RGB_RED);
+    // Initializations
+    serial_init(SERIAL_COM1);
+    serial_write(SERIAL_COM1, "Hello World !");
 
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500 + 50, 500 - 50}, RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500 + 50, 500}     , RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500 + 50, 500 + 50}, RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500     , 500 + 50}, RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500 - 50, 500 + 50}, RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500 - 50, 500}     , RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500 - 50, 500 - 50}, RGB_CYAN);
-    framebuffer_drawLine(framebuffer, (Vec2){500, 500},(Vec2){500     , 500 - 50}, RGB_CYAN);
-
-    hcf();
+    hcf(); // Done
 }
