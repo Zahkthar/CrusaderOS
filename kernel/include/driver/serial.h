@@ -40,14 +40,14 @@
 #define SERIAL_PARITY_SPACE ((0x1 << 5) | (0x1 << 4) | (0x1 << 3))
 
 // Line Status Registers Flags
-#define DATA_READY                         (0 << 0)
-#define OVERRUN_ERROR                      (1 << 1)
-#define PARITY_ERROR                       (1 << 2)
-#define FRAMING_ERROR                      (1 << 3)
-#define BREAK_INDICATOR                    (1 << 4)
-#define TRANSMITTER_HOLDING_REGISTER_EMPTY (1 << 5)
-#define TRANSMITTER_EMPTY                  (1 << 6)
-#define IMPENDING_ERROR                    (1 << 7)
+#define SERIAL_LINE_STATUS_DATA_READY                         (0 << 0)
+#define SERIAL_LINE_STATUS_OVERRUN_ERROR                      (1 << 1)
+#define SERIAL_LINE_STATUS_PARITY_ERROR                       (1 << 2)
+#define SERIAL_LINE_STATUS_FRAMING_ERROR                      (1 << 3)
+#define SERIAL_LINE_STATUS_BREAK_INDICATOR                    (1 << 4)
+#define SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY (1 << 5)
+#define SERIAL_LINE_STATUS_TRANSMITTER_EMPTY                  (1 << 6)
+#define SERIAL_LINE_STATUS_IMPENDING_ERROR                    (1 << 7)
 
 // +-----------+
 // | FUNCTIONS |

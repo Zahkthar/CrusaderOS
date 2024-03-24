@@ -43,13 +43,13 @@ void framebuffer_drawLine(struct limine_framebuffer *framebuffer, Vec2 posA, Vec
 
 void framebuffer_drawRect(struct limine_framebuffer *framebuffer, Rect rect, int rgbColor)
 {
-    for (int i = rect.x; i < rect.x + rect.w; i++) // Up and down
+    for (int i = rect.x; i <= rect.x + rect.w; i++) // Up and down
     {
         framebuffer_putPixel(framebuffer, (Vec2){i, rect.y}, rgbColor);
         framebuffer_putPixel(framebuffer, (Vec2){i, rect.y + rect.h}, rgbColor);
     }
 
-    for (int i = rect.y; i < rect.y + rect.h; i++) // Left and right
+    for (int i = rect.y; i <= rect.y + rect.h; i++) // Left and right
     {
         framebuffer_putPixel(framebuffer, (Vec2){rect.x, i}, rgbColor);
         framebuffer_putPixel(framebuffer, (Vec2){rect.x + rect.w, i}, rgbColor);

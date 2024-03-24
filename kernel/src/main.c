@@ -7,6 +7,9 @@
 #include "sys/cpu.h"
 #include "driver/serial.h"
 
+#include "graphics/framebuffer.h"
+#include "graphics/colors.h"
+
 // Limine requests
 
 static volatile LIMINE_BASE_REVISION(1);
@@ -52,10 +55,13 @@ void kernel_main(void)
     (void)framebuffer;
 
     // Initializations
-    if(serial_init(SERIAL_COM1) == 0)
+    if (serial_init(SERIAL_COM1) == 0)
     {
         serial_write(SERIAL_COM1, "[ OK ] Serial Initialization");
     }
+
+    framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
+    framebuffer_drawRect(framebuffer, (Rect){200, 50, 100, 100}, RGB_RED);
 
     hcf(); // Done
 }

@@ -35,30 +35,10 @@ static void setLineProtocol(uint16_t comPort, uint8_t divisorValue, uint16_t cha
     outb(SERIAL_LINE_CONTROL_REGISTER(comPort), lineControlProtocol);
 }
 
-uint8_t serial_getLineStatus(uint16_t comPort)
-{
-    return inb(SERIAL_LINE_STATUS_REGISTER(comPort));
-}
-
-uint32_t serial_read(uint16_t comPort)
-{
-    while ((serial_getLineStatus(comPort) & DATA_READY) == 0);
-    return inb(SERIAL_DATA_REGISTER(comPort));
-}
-
 static void putchar(uint16_t comPort, char character)
 {
-    while ((serial_getLineStatus(comPort) & TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0);
+    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0);
     outb(comPort, character);
-}
-
-void serial_write(uint16_t comPort, const char *str)
-{
-    size_t strLen = strlen(str);
-    for (size_t i = 0; i < strLen; i++)
-    {
-        putchar(comPort, str[i]);
-    }
 }
 
 int serial_init(uint16_t comPort)
@@ -79,4 +59,24 @@ int serial_init(uint16_t comPort)
     // (not-loopback with IRQs enabled and OUT#1 and OUT#2 bits enabled)
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x0F);
     return 0;
+}
+
+uint8_t serial_getLineStatus(uint16_t comPort)
+{
+    return inb(SERIAL_LINE_STATUS_REGISTER(comPort));
+}
+
+uint32_t serial_read(uint16_t comPort)
+{
+    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_DATA_READY) == 0);
+    return inb(SERIAL_DATA_REGISTER(comPort));
+}
+
+void serial_write(uint16_t comPort, const char *str)
+{
+    size_t strLen = strlen(str);
+    for (size_t i = 0; i < strLen; i++)
+    {
+        putchar(comPort, str[i]);
+    }
 }
