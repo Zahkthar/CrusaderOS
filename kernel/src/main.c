@@ -52,8 +52,10 @@ void kernel_main(void)
     (void)framebuffer;
 
     // Initializations
-    serial_init(SERIAL_COM1);
-    serial_write(SERIAL_COM1, "Hello World !");
+    if(serial_init(SERIAL_COM1) == 0)
+    {
+        serial_write(SERIAL_COM1, "[ OK ] Serial Initialization");
+    }
 
     hcf(); // Done
 }
