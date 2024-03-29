@@ -14,4 +14,10 @@ void *memset(void *ptr, int value, size_t count);
 
 size_t strlen(const char *str);
 
+// +------------------------+
+// | NOT STANDARD FUNCTIONS |
+// +------------------------+
+
+char *strrev(char *str);
+
 #endif // KLIBC_STRING_H_INCLUDED

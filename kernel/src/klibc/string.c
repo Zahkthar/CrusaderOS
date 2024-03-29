@@ -76,3 +76,26 @@ size_t strlen(const char *str)
     }
     return len;
 }
+
+// +------------------------+
+// | NOT STANDARD FUNCTIONS |
+// +------------------------+
+
+char *strrev(char *str)
+{
+    if(str == NULL || *str == '\0')
+    {
+        return str;
+    }
+
+    size_t strLenght = strlen(str);
+
+    for(size_t i = 0; i < strLenght / 2; i++)
+    {
+        char tmp = str[i];
+        str[i] = str[strLenght - i - 1];
+        str[strLenght - i - 1] = tmp;
+    }
+
+    return str;
+}

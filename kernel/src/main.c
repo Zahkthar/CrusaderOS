@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "klibc/stdlib.h"
+
 #include <limine.h>
 
 #include "sys/cpu.h"
@@ -57,8 +59,15 @@ void kernel_main(void)
     // Initializations
     if (serial_init(SERIAL_COM1) == 0)
     {
-        serial_write(SERIAL_COM1, "[ OK ] Serial Initialization");
+        serial_write(SERIAL_COM1, "[ OK ] Serial Initialization\n");
     }
+
+    char strBuffer[100] = "";
+    serial_write(SERIAL_COM1, "[ INFO ] Screen resolution : ");
+    serial_write(SERIAL_COM1, itoa(framebuffer->width, strBuffer, 10));
+    serial_write(SERIAL_COM1, "x");
+    serial_write(SERIAL_COM1, itoa(framebuffer->height, strBuffer, 10));
+    serial_write(SERIAL_COM1, "\n");
 
     framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
     framebuffer_drawRect(framebuffer, (Rect){200, 50, 100, 100}, RGB_RED);
