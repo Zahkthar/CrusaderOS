@@ -86,22 +86,24 @@ override NASMFLAGS += \
 # object and header dependency file names.
 override SRC_FOLDER := src
 override HEADERS_FOLDER := include
+override OBJECTS_FOLDER := obj
+override BINARY_FOLDER := bin
 
-override CFILES := $(shell cd src && find -L * -type f -name '*.c')
-override ASFILES := $(shell cd src && find -L * -type f -name '*.S')
-override NASMFILES := $(shell cd src && find -L * -type f -name '*.asm')
-override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o))
-override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
+override CFILES := $(shell cd $(SRC_FOLDER) && find -L * -type f -name '*.c')
+override ASFILES := $(shell cd $(SRC_FOLDER) && find -L * -type f -name '*.S')
+override NASMFILES := $(shell cd $(SRC_FOLDER) && find -L * -type f -name '*.asm')
+override OBJ := $(addprefix $(OBJECTS_FOLDER)/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o))
+override HEADER_DEPS := $(addprefix $(OBJECTS_FOLDER)/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target.
 .PHONY: all
-all: bin/$(KERNEL)
+all: $(BINARY_FOLDER)/$(KERNEL)
 
 $(HEADERS_FOLDER)/limine.h:
 	curl -Lo $@ https://github.com/limine-bootloader/limine/raw/trunk/limine.h
 
 # Link rules for the final kernel executable.
-bin/$(KERNEL): GNUmakefile linker.ld $(OBJ)
+$(BINARY_FOLDER)/$(KERNEL): GNUmakefile linker.ld $(OBJ)
 	mkdir -p "$$(dirname $@)"
 	$(LD) $(OBJ) $(LDFLAGS) -o $@
 
@@ -109,24 +111,24 @@ bin/$(KERNEL): GNUmakefile linker.ld $(OBJ)
 -include $(HEADER_DEPS)
 
 # Compilation rules for *.c files.
-obj/%.c.o: src/%.c GNUmakefile $(HEADERS_FOLDER)/limine.h
+$(OBJECTS_FOLDER)/%.c.o: $(SRC_FOLDER)/%.c GNUmakefile $(HEADERS_FOLDER)/limine.h
 	mkdir -p "$$(dirname $@)"
 	$(CC) $(CFLAGS) $(CPPFLAGS) -I $(HEADERS_FOLDER) -c $< -o $@
 
 # Compilation rules for *.S files.
-obj/%.S.o: src/%.S GNUmakefile
+$(OBJECTS_FOLDER)/%.S.o: $(SRC_FOLDER)/%.S GNUmakefile
 	mkdir -p "$$(dirname $@)"
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # Compilation rules for *.asm (nasm) files.
-obj/%.asm.o: src/%.asm GNUmakefile
+$(OBJECTS_FOLDER)/%.asm.o: $(SRC_FOLDER)/%.asm GNUmakefile
 	mkdir -p "$$(dirname $@)"
 	nasm $(NASMFLAGS) $< -o $@
 
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin obj
+	rm -rf $(BINARY_FOLDER) $(OBJECTS_FOLDER)
 
 .PHONY: distclean
 distclean: clean
