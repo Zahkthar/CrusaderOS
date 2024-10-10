@@ -1,4 +1,4 @@
-#include "driver/serial.h"
+#include "drivers/serial.h"
 
 static void setLineProtocol(uint16_t comPort, uint8_t divisorValue, uint16_t charLength, uint8_t nbStopBits, uint8_t parity)
 {

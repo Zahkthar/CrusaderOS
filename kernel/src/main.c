@@ -7,7 +7,7 @@
 #include <limine.h>
 
 #include "sys/cpu.h"
-#include "driver/serial.h"
+#include "drivers/serial.h"
 
 #include "graphics/framebuffer.h"
 #include "graphics/colors.h"
@@ -70,7 +70,7 @@ void kernel_main(void)
     serial_write(SERIAL_COM1, "\n");
 
     framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
-    framebuffer_drawRect(framebuffer, (Rect){200, 50, 100, 100}, RGB_RED);
+    framebuffer_drawRect(framebuffer, (Rect){100, 50, 100, 100}, RGB_RED);
 
     hcf(); // Done
 }
