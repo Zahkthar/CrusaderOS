@@ -121,11 +121,6 @@ void io_wait();
 // | INTERRUPTIONS AND PAUSE |
 // +-------------------------+
 
-bool areInterruptsEnabled();
-
-unsigned long save_irqdisable(void);
-void irqrestore(unsigned long flags);
-
 void cli(void); // Disable interruptions
 void sti(void); // Enable interruptions
 
