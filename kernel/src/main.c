@@ -7,6 +7,8 @@
 #include <limine.h>
 
 #include "sys/cpu.h"
+#include "sys/gdt.h"
+
 #include "drivers/serial.h"
 
 #include "graphics/framebuffer.h"
@@ -74,6 +76,7 @@ void kernel_main(void)
     serial_write(SERIAL_COM1, "\n");
 
     // GDT - Global Descriptor Table
+    GDT_init();
 
     // IDT - Interrupt Descriptor Table
 
