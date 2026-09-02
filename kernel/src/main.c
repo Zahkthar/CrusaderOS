@@ -1,6 +1,6 @@
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "klibc/stdlib.h"
 
@@ -11,36 +11,32 @@
 
 #include "drivers/serial.h"
 
-#include "graphics/framebuffer.h"
 #include "graphics/colors.h"
+#include "graphics/framebuffer.h"
 
 // Limine requests
 
-static volatile LIMINE_BASE_REVISION(1);
+__attribute__((used)) static volatile LIMINE_BASE_REVISION(1);
 
-static volatile struct limine_framebuffer_request fb_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST,
-    .revision = 0};
+__attribute__((used)) static volatile struct limine_framebuffer_request fb_request = {.id = LIMINE_FRAMEBUFFER_REQUEST,
+                                                                                      .revision = 0};
 
-static volatile struct limine_hhdm_request hhdm_request = {
-    .id = LIMINE_HHDM_REQUEST,
-    .revision = 0};
+__attribute__((used)) static volatile struct limine_hhdm_request hhdm_request = {.id = LIMINE_HHDM_REQUEST,
+                                                                                 .revision = 0};
 
-static volatile struct limine_memmap_request mm_request = {
-    .id = LIMINE_MEMMAP_REQUEST,
-    .revision = 0};
+__attribute__((used)) static volatile struct limine_memmap_request mm_request = {.id = LIMINE_MEMMAP_REQUEST,
+                                                                                 .revision = 0};
 
-static volatile struct limine_rsdp_request rsdp_request = {
-    .id = LIMINE_RSDP_REQUEST,
-    .revision = 0};
+__attribute__((used)) static volatile struct limine_rsdp_request rsdp_request = {.id = LIMINE_RSDP_REQUEST,
+                                                                                 .revision = 0};
 
-static volatile struct limine_kernel_address_request kernel_addr_request = {
-    .id = LIMINE_KERNEL_ADDRESS_REQUEST,
-    .revision = 0};
+__attribute__((used)) static volatile struct limine_kernel_address_request kernel_addr_request = {
+    .id = LIMINE_KERNEL_ADDRESS_REQUEST, .revision = 0};
 
-static volatile struct limine_module_request module_request = {
-    .id = LIMINE_MODULE_REQUEST,
-    .revision = 0};
+__attribute__((used)) static volatile struct limine_module_request module_request = {.id = LIMINE_MODULE_REQUEST,
+                                                                                     .revision = 0};
+
+void kernel_main(void);
 
 void kernel_main(void)
 {
@@ -56,7 +52,6 @@ void kernel_main(void)
     }
 
     struct limine_framebuffer *framebuffer = fb_request.response->framebuffers[0];
-    (void)framebuffer;
 
     // Initializations
 
@@ -65,18 +60,18 @@ void kernel_main(void)
     {
         hcf();
     }
-    
-    serial_write(SERIAL_COM1, "[ OK ] Serial Initialization\n");
+
+    serial_write(SERIAL_COM1, "[ OK ] Serial Initialization\r\n");
 
     char strBuffer[100] = "";
     serial_write(SERIAL_COM1, "[ INFO ] Screen resolution : ");
-    serial_write(SERIAL_COM1, itoa(framebuffer->width, strBuffer, 10));
+    serial_write(SERIAL_COM1, itoa((int)framebuffer->width, strBuffer, 10));
     serial_write(SERIAL_COM1, "x");
-    serial_write(SERIAL_COM1, itoa(framebuffer->height, strBuffer, 10));
-    serial_write(SERIAL_COM1, "\n");
+    serial_write(SERIAL_COM1, itoa((int)framebuffer->height, strBuffer, 10));
+    serial_write(SERIAL_COM1, "\r\n");
 
     // GDT - Global Descriptor Table
-    GDT_init();
+    gdt_init();
 
     // IDT - Interrupt Descriptor Table
 

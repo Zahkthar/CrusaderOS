@@ -1,0 +1,37 @@
+BasedOnStyle: LLVM
+Language: Cpp
+
+# Indentation (4 spaces, no tabs)
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Column limit
+ColumnLimit: 120
+
+# Allman style (braces on new line for functions, control statements, structs, etc.)
+BreakBeforeBraces: Allman
+
+# Prevent collapsing blocks or control statements onto a single line
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# Align defines / macros in headers
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: true
+
+# Align trailing comments
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 1
+
+# Pointer alignment (e.g. type *ptr)
+PointerAlignment: Right
+
+# Do not reorder includes unexpectedly
+SortIncludes: false

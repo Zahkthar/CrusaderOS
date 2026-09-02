@@ -8,22 +8,14 @@ void wrmsr(uint64_t msr, uint64_t value)
 {
     uint32_t low = value & 0xFFFFFFFF;
     uint32_t high = value >> 32;
-    asm volatile (
-        "wrmsr"
-        :
-        : "c"(msr), "a"(low), "d"(high)
-    );
+    asm volatile("wrmsr" : : "c"(msr), "a"(low), "d"(high));
 }
 
 uint64_t rdmsr(uint64_t msr)
 {
     uint32_t low, high;
-    asm volatile (
-        "rdmsr"
-        : "=a"(low), "=d"(high)
-        : "c"(msr)
-    );
-	return ((uint64_t)high << 32) | low;
+    asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
+    return ((uint64_t)high << 32) | low;
 }
 
 // +-----------------------+
@@ -32,20 +24,37 @@ uint64_t rdmsr(uint64_t msr)
 
 void cpuid(uint32_t reg, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
-    asm volatile("cpuid" : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx) : "0"(reg));
+    uint32_t a = 0, b = 0, c = 0, d = 0;
+    asm volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "0"(reg));
+    if (eax != (void *)0)
+    {
+        *eax = a;
+    }
+    if (ebx != (void *)0)
+    {
+        *ebx = b;
+    }
+    if (ecx != (void *)0)
+    {
+        *ecx = c;
+    }
+    if (edx != (void *)0)
+    {
+        *edx = d;
+    }
 }
 
 uint64_t rdtsc(void)
 {
     uint32_t low, high;
-    asm volatile("rdtsc":"=a"(low),"=d"(high));
+    asm volatile("rdtsc" : "=a"(low), "=d"(high));
     return ((uint64_t)high << 32) | low;
 }
 
 uint64_t read_cr0(void)
 {
     uint64_t val;
-    asm volatile ( "mov %%cr0, %0" : "=r"(val) );
+    asm volatile("mov %%cr0, %0" : "=r"(val));
     return val;
 }
 
@@ -55,44 +64,43 @@ uint64_t read_cr0(void)
 
 void outb(uint16_t port, uint8_t data)
 {
-    asm volatile("outb %b0, %w1" : : "a" (data), "Nd" (port));
+    asm volatile("outb %b0, %w1" : : "a"(data), "Nd"(port));
 }
 
 void outw(uint16_t port, uint16_t data)
 {
-    asm volatile("outw %w0, %w1" : : "a" (data), "Nd" (port));
+    asm volatile("outw %w0, %w1" : : "a"(data), "Nd"(port));
 }
 
 void outl(uint16_t port, uint32_t data)
 {
-    asm volatile("outl %0, %w1" : : "a" (data), "Nd" (port));
+    asm volatile("outl %0, %w1" : : "a"(data), "Nd"(port));
 }
 
 uint8_t inb(uint16_t port)
 {
     uint8_t data;
-    asm volatile("inb %w1, %b0" : "=a" (data) : "Nd" (port));
+    asm volatile("inb %w1, %b0" : "=a"(data) : "Nd"(port));
     return data;
 }
 
 uint16_t inw(uint16_t port)
 {
     uint16_t data;
-    asm volatile("inw %w1, %w0" : "=a" (data) : "Nd" (port));
+    asm volatile("inw %w1, %w0" : "=a"(data) : "Nd"(port));
     return data;
 }
-
 
 uint32_t inl(uint16_t port)
 {
     uint32_t data;
-    asm volatile("inl %w1, %0" : "=a" (data) : "Nd" (port));
+    asm volatile("inl %w1, %0" : "=a"(data) : "Nd"(port));
     return data;
 }
 
-void io_wait()
+void io_wait(void)
 {
-    asm volatile("jmp 1f;1:jmp 1f;1:");
+    outb(0x80, 0);
 }
 
 // +-------------------------+

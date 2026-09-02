@@ -5,12 +5,14 @@
 // | VECTORS |
 // +---------+
 
-typedef struct Vec2 {
+typedef struct Vec2
+{
     int x;
     int y;
 } Vec2;
 
-typedef struct Vec3 {
+typedef struct Vec3
+{
     int x;
     int y;
     int z;
@@ -20,7 +22,8 @@ typedef struct Vec3 {
 // | SHAPES |
 // +--------+
 
-typedef struct Rect {
+typedef struct Rect
+{
     int x;
     int y;
     int w;

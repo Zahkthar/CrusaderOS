@@ -1,4 +1,4 @@
-#include "math.h"
+#include "klibc/math.h"
 
 int abs(int value)
 {

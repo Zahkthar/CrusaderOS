@@ -1,33 +1,35 @@
 #include "drivers/serial.h"
 
-static void setLineProtocol(uint16_t comPort, uint8_t divisorValue, uint16_t charLength, uint8_t nbStopBits, uint8_t parity)
+static void setLineProtocol(uint16_t comPort, uint16_t divisorValue, uint8_t charLength, uint8_t nbStopBits,
+                            uint8_t parity)
 {
-    // baudRate
+    // Baud rate divisor latch
     outb(SERIAL_LINE_CONTROL_REGISTER(comPort), 0x80);
-    outb(SERIAL_DATA_REGISTER(comPort)    ,  divisorValue       & 0x00FF);
-    outb(SERIAL_DATA_REGISTER(comPort) + 1, (divisorValue >> 8) & 0x00FF);
+    outb(SERIAL_DATA_REGISTER(comPort), (uint8_t)(divisorValue & 0x00FF));
+    outb(SERIAL_INTERRUPT_ENABLE_REGISTER(comPort), (uint8_t)((divisorValue >> 8) & 0x00FF));
 
     uint8_t lineControlProtocol = 0;
 
     // Data bits
     switch (charLength)
     {
-    case 5: // 0b00 
+    case 5:
         break;
-    case 6: // 0b01
+    case 6:
         lineControlProtocol |= (1 << 0);
         break;
-    case 7: // 0b10
+    case 7:
         lineControlProtocol |= (1 << 1);
         break;
-    case 8: // 0b11
+    case 8:
+    default:
         lineControlProtocol |= (1 << 0);
         lineControlProtocol |= (1 << 1);
         break;
     }
 
     // Stop bits
-    lineControlProtocol |= (nbStopBits << 2);
+    lineControlProtocol |= (uint8_t)(nbStopBits << 2);
 
     // Parity
     lineControlProtocol |= parity;
@@ -35,10 +37,13 @@ static void setLineProtocol(uint16_t comPort, uint8_t divisorValue, uint16_t cha
     outb(SERIAL_LINE_CONTROL_REGISTER(comPort), lineControlProtocol);
 }
 
-static void putchar(uint16_t comPort, char character)
+void serial_putchar(uint16_t comPort, char character)
 {
-    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0);
-    outb(comPort, character);
+    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
+    {
+        // Wait for transmit buffer to empty
+    }
+    outb(SERIAL_DATA_REGISTER(comPort), (uint8_t)character);
 }
 
 int serial_init(uint16_t comPort)
@@ -49,7 +54,8 @@ int serial_init(uint16_t comPort)
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x0B);    // IRQs enabled, RTS/DSR set
 
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x1E);    // Set in loopback mode, test the serial chip
-    outb(SERIAL_DATA_REGISTER(comPort), 0xAE);             // Test serial chip (send byte 0xAE and check if serial returns same byte)
+    outb(SERIAL_DATA_REGISTER(comPort),
+         0xAE); // Test serial chip (send byte 0xAE and check if serial returns same byte)
     if (inb(SERIAL_DATA_REGISTER(comPort) + 0) != 0xAE)
     {
         return 1;
@@ -66,17 +72,25 @@ uint8_t serial_getLineStatus(uint16_t comPort)
     return inb(SERIAL_LINE_STATUS_REGISTER(comPort));
 }
 
-uint32_t serial_read(uint16_t comPort)
+uint8_t serial_read(uint16_t comPort)
 {
-    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_DATA_READY) == 0);
+    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_DATA_READY) == 0)
+    {
+        // Wait for incoming byte
+    }
     return inb(SERIAL_DATA_REGISTER(comPort));
 }
 
 void serial_write(uint16_t comPort, const char *str)
 {
-    size_t strLen = strlen(str);
-    for (size_t i = 0; i < strLen; i++)
+    if (str == NULL)
     {
-        putchar(comPort, str[i]);
+        return;
+    }
+
+    while (*str != '\0')
+    {
+        serial_putchar(comPort, *str);
+        str++;
     }
 }

@@ -45,6 +45,12 @@ $(eval $(call DEFAULT_VAR,LDFLAGS,$(DEFAULT_LDFLAGS)))
 override CFLAGS += \
     -Wall \
     -Wextra \
+    -Wstrict-prototypes \
+    -Wold-style-definition \
+    -Wmissing-prototypes \
+    -Wshadow \
+    -Wundef \
+    -Wpointer-arith \
     -std=gnu11 \
     -ffreestanding \
     -fno-stack-protector \
@@ -59,9 +65,16 @@ override CFLAGS += \
     -mno-sse2 \
     -mno-red-zone
 
+# Folders
+override SRC_FOLDER := src
+override HEADERS_FOLDER := include
+override OBJECTS_FOLDER := obj
+override BINARY_FOLDER := bin
+
 # Internal C preprocessor flags that should not be changed by the user.
 override CPPFLAGS := \
-    -I src \
+    -I $(SRC_FOLDER) \
+    -I $(HEADERS_FOLDER) \
     $(CPPFLAGS) \
     -MMD \
     -MP
@@ -84,11 +97,6 @@ override NASMFLAGS += \
 
 # Use "find" to glob all *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
-override SRC_FOLDER := src
-override HEADERS_FOLDER := include
-override OBJECTS_FOLDER := obj
-override BINARY_FOLDER := bin
-
 override CFILES := $(shell cd $(SRC_FOLDER) && find -L * -type f -name '*.c')
 override ASFILES := $(shell cd $(SRC_FOLDER) && find -L * -type f -name '*.S')
 override NASMFILES := $(shell cd $(SRC_FOLDER) && find -L * -type f -name '*.asm')
@@ -100,7 +108,7 @@ override HEADER_DEPS := $(addprefix $(OBJECTS_FOLDER)/,$(CFILES:.c=.c.d) $(ASFIL
 all: $(BINARY_FOLDER)/$(KERNEL)
 
 $(HEADERS_FOLDER)/limine.h:
-	curl -Lo $@ https://github.com/limine-bootloader/limine/raw/trunk/limine.h
+	curl -sSfLo $@ https://raw.githubusercontent.com/limine-bootloader/limine/v7.x-binary/limine.h
 
 # Link rules for the final kernel executable.
 $(BINARY_FOLDER)/$(KERNEL): GNUmakefile linker.ld $(OBJ)
@@ -113,7 +121,7 @@ $(BINARY_FOLDER)/$(KERNEL): GNUmakefile linker.ld $(OBJ)
 # Compilation rules for *.c files.
 $(OBJECTS_FOLDER)/%.c.o: $(SRC_FOLDER)/%.c GNUmakefile $(HEADERS_FOLDER)/limine.h
 	mkdir -p "$$(dirname $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -I $(HEADERS_FOLDER) -c $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # Compilation rules for *.S files.
 $(OBJECTS_FOLDER)/%.S.o: $(SRC_FOLDER)/%.S GNUmakefile
