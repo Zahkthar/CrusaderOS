@@ -55,20 +55,18 @@ void kernel_main(void)
 
     // Initializations
 
-    // Serial communications
-    if (serial_init(SERIAL_COM1) != 0)
+    // Serial communications (non-fatal if absent on real hardware)
+    if (serial_init(SERIAL_COM1) == 0)
     {
-        hcf();
+        serial_write(SERIAL_COM1, "[ OK ] Serial Initialization\r\n");
+
+        char strBuffer[100] = "";
+        serial_write(SERIAL_COM1, "[ INFO ] Screen resolution : ");
+        serial_write(SERIAL_COM1, itoa((int)framebuffer->width, strBuffer, 10));
+        serial_write(SERIAL_COM1, "x");
+        serial_write(SERIAL_COM1, itoa((int)framebuffer->height, strBuffer, 10));
+        serial_write(SERIAL_COM1, "\r\n");
     }
-
-    serial_write(SERIAL_COM1, "[ OK ] Serial Initialization\r\n");
-
-    char strBuffer[100] = "";
-    serial_write(SERIAL_COM1, "[ INFO ] Screen resolution : ");
-    serial_write(SERIAL_COM1, itoa((int)framebuffer->width, strBuffer, 10));
-    serial_write(SERIAL_COM1, "x");
-    serial_write(SERIAL_COM1, itoa((int)framebuffer->height, strBuffer, 10));
-    serial_write(SERIAL_COM1, "\r\n");
 
     // GDT - Global Descriptor Table
     gdt_init();

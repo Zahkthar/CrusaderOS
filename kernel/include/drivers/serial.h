@@ -54,6 +54,7 @@
 // +-----------+
 
 int serial_init(uint16_t comPort);
+bool serial_is_available(uint16_t comPort);
 
 uint8_t serial_getLineStatus(uint16_t comPort);
 

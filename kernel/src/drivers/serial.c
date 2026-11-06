@@ -1,5 +1,34 @@
 #include "drivers/serial.h"
 
+static bool s_com_available[4] = {false, false, false, false};
+
+static int serial_port_to_index(uint16_t comPort)
+{
+    switch (comPort)
+    {
+    case SERIAL_COM1:
+        return 0;
+    case SERIAL_COM2:
+        return 1;
+    case SERIAL_COM3:
+        return 2;
+    case SERIAL_COM4:
+        return 3;
+    default:
+        return -1;
+    }
+}
+
+bool serial_is_available(uint16_t comPort)
+{
+    int idx = serial_port_to_index(comPort);
+    if (idx >= 0 && idx < 4)
+    {
+        return s_com_available[idx];
+    }
+    return false;
+}
+
 static void setLineProtocol(uint16_t comPort, uint16_t divisorValue, uint8_t charLength, uint8_t nbStopBits,
                             uint8_t parity)
 {
@@ -39,6 +68,11 @@ static void setLineProtocol(uint16_t comPort, uint16_t divisorValue, uint8_t cha
 
 void serial_putchar(uint16_t comPort, char character)
 {
+    if (!serial_is_available(comPort))
+    {
+        return;
+    }
+
     while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
     {
         // Wait for transmit buffer to empty
@@ -48,6 +82,12 @@ void serial_putchar(uint16_t comPort, char character)
 
 int serial_init(uint16_t comPort)
 {
+    int idx = serial_port_to_index(comPort);
+    if (idx >= 0 && idx < 4)
+    {
+        s_com_available[idx] = false;
+    }
+
     outb(SERIAL_INTERRUPT_ENABLE_REGISTER(comPort), 0x00); // Disable all interrupts
     setLineProtocol(comPort, 1, 8, 0, SERIAL_PARITY_NONE); // 115200 bauds, 8 bits per char, 1 stop bit, no parity
     outb(SERIAL_FIFO_CONTROL_REGISTER(comPort), 0xC7);     // Enable FIFO, clear them, with 14-byte threshold
@@ -64,6 +104,11 @@ int serial_init(uint16_t comPort)
     // If serial is not faulty set it in normal operation mode
     // (not-loopback with IRQs enabled and OUT#1 and OUT#2 bits enabled)
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x0F);
+
+    if (idx >= 0 && idx < 4)
+    {
+        s_com_available[idx] = true;
+    }
     return 0;
 }
 
@@ -74,6 +119,11 @@ uint8_t serial_getLineStatus(uint16_t comPort)
 
 uint8_t serial_read(uint16_t comPort)
 {
+    if (!serial_is_available(comPort))
+    {
+        return 0;
+    }
+
     while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_DATA_READY) == 0)
     {
         // Wait for incoming byte
@@ -83,7 +133,7 @@ uint8_t serial_read(uint16_t comPort)
 
 void serial_write(uint16_t comPort, const char *str)
 {
-    if (str == NULL)
+    if (str == NULL || !serial_is_available(comPort))
     {
         return;
     }
