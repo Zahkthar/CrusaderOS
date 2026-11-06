@@ -22,10 +22,10 @@ uint64_t rdmsr(uint64_t msr)
 // | CPU-RELATED FUNCTIONS |
 // +-----------------------+
 
-void cpuid(uint32_t reg, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
+void cpuid_ex(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
     uint32_t a = 0, b = 0, c = 0, d = 0;
-    asm volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "0"(reg));
+    asm volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(leaf), "c"(subleaf));
     if (eax != (void *)0)
     {
         *eax = a;
@@ -44,6 +44,11 @@ void cpuid(uint32_t reg, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *
     }
 }
 
+void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
+{
+    cpuid_ex(leaf, 0, eax, ebx, ecx, edx);
+}
+
 uint64_t rdtsc(void)
 {
     uint32_t low, high;
@@ -58,76 +63,21 @@ uint64_t read_cr0(void)
     return val;
 }
 
-// +-----+
-// | I/O |
-// +-----+
-
-void outb(uint16_t port, uint8_t data)
+uint64_t read_cr2(void)
 {
-    asm volatile("outb %b0, %w1" : : "a"(data), "Nd"(port));
+    uint64_t val;
+    asm volatile("mov %%cr2, %0" : "=r"(val));
+    return val;
 }
 
-void outw(uint16_t port, uint16_t data)
+uint64_t read_cr3(void)
 {
-    asm volatile("outw %w0, %w1" : : "a"(data), "Nd"(port));
+    uint64_t val;
+    asm volatile("mov %%cr3, %0" : "=r"(val));
+    return val;
 }
 
-void outl(uint16_t port, uint32_t data)
+void write_cr3(uint64_t val)
 {
-    asm volatile("outl %0, %w1" : : "a"(data), "Nd"(port));
-}
-
-uint8_t inb(uint16_t port)
-{
-    uint8_t data;
-    asm volatile("inb %w1, %b0" : "=a"(data) : "Nd"(port));
-    return data;
-}
-
-uint16_t inw(uint16_t port)
-{
-    uint16_t data;
-    asm volatile("inw %w1, %w0" : "=a"(data) : "Nd"(port));
-    return data;
-}
-
-uint32_t inl(uint16_t port)
-{
-    uint32_t data;
-    asm volatile("inl %w1, %0" : "=a"(data) : "Nd"(port));
-    return data;
-}
-
-void io_wait(void)
-{
-    outb(0x80, 0);
-}
-
-// +-------------------------+
-// | INTERRUPTIONS AND PAUSE |
-// +-------------------------+
-
-// Will be moved to a "interrupts.c" file
-void cli(void)
-{
-    asm volatile("cli");
-}
-
-void sti(void)
-{
-    asm volatile("sti");
-}
-
-void hlt(void)
-{
-    asm volatile("hlt");
-}
-
-void hcf(void)
-{
-    cli();
-    for (;;)
-    {
-        hlt();
-    }
+    asm volatile("mov %0, %%cr3" : : "r"(val) : "memory");
 }

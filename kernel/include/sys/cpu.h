@@ -17,7 +17,6 @@
 
 #define MSR_EFER 0xC0000080
 
-// https://wiki.osdev.org/SYSENTER
 #define MSR_STAR  0xC0000081
 #define MSR_LSTAR 0xC0000082 // The kernel's RIP SYSCALL entry for 64 bit software.
 #define MSR_CSTAR 0xC0000083 // The kernel's RIP for SYSCALL in compatibility mode.
@@ -100,33 +99,86 @@ uint64_t rdmsr(uint64_t msr);
 #define CPUID_EDX_RDTSCP   (1 << 27) // RDTSCP and IA32_TSC_AUX
 #define CPUID_EDX_64_BIT   (1 << 29) // 64-bit Architecture
 
-void cpuid(uint32_t reg, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
+void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
+void cpuid_ex(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
 
 uint64_t rdtsc(void);
 uint64_t read_cr0(void);
+uint64_t read_cr2(void);
+uint64_t read_cr3(void);
+void write_cr3(uint64_t val);
 
 // +-----+
 // | I/O |
 // +-----+
 
-void outb(uint16_t port, uint8_t data);
-void outw(uint16_t port, uint16_t data);
-void outl(uint16_t port, uint32_t data);
+static inline void outb(uint16_t port, uint8_t data)
+{
+    asm volatile("outb %b0, %w1" : : "a"(data), "Nd"(port) : "memory");
+}
 
-uint8_t inb(uint16_t port);
-uint16_t inw(uint16_t port);
-uint32_t inl(uint16_t port);
+static inline void outw(uint16_t port, uint16_t data)
+{
+    asm volatile("outw %w0, %w1" : : "a"(data), "Nd"(port) : "memory");
+}
 
-void io_wait(void);
+static inline void outl(uint16_t port, uint32_t data)
+{
+    asm volatile("outl %0, %w1" : : "a"(data), "Nd"(port) : "memory");
+}
+
+static inline uint8_t inb(uint16_t port)
+{
+    uint8_t data;
+    asm volatile("inb %w1, %b0" : "=a"(data) : "Nd"(port) : "memory");
+    return data;
+}
+
+static inline uint16_t inw(uint16_t port)
+{
+    uint16_t data;
+    asm volatile("inw %w1, %w0" : "=a"(data) : "Nd"(port) : "memory");
+    return data;
+}
+
+static inline uint32_t inl(uint16_t port)
+{
+    uint32_t data;
+    asm volatile("inl %w1, %0" : "=a"(data) : "Nd"(port) : "memory");
+    return data;
+}
+
+static inline void io_wait(void)
+{
+    outb(0x80, 0);
+}
 
 // +-------------------------+
 // | INTERRUPTS AND PAUSE    |
 // +-------------------------+
 
-void cli(void); // Disable interrupts
-void sti(void); // Enable interrupts
+static inline void cli(void)
+{
+    asm volatile("cli" ::: "memory");
+}
 
-void hlt(void); // Halt
-void hcf(void); // Halt and catch fire
+static inline void sti(void)
+{
+    asm volatile("sti" ::: "memory");
+}
+
+static inline void hlt(void)
+{
+    asm volatile("hlt");
+}
+
+static inline void hcf(void)
+{
+    cli();
+    for (;;)
+    {
+        hlt();
+    }
+}
 
 #endif          // SYS_CPU_H_INCLUDED

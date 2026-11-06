@@ -1,7 +1,5 @@
 #include "sys/gdt.h"
 
-#include <stdint.h>
-
 #include "klibc/string.h"
 
 // GDT Selectors
@@ -156,8 +154,6 @@ void gdt_init(void)
                  "mov $0x10, %%ax\n" // 0x10 = offset du segment de données noyau
                  "mov %%ax, %%ds\n"
                  "mov %%ax, %%es\n"
-                 "mov %%ax, %%fs\n"
-                 "mov %%ax, %%gs\n"
                  "mov %%ax, %%ss\n"
                  :
                  : "r"(&g_GDTDescriptor)

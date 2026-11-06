@@ -36,6 +36,10 @@ __attribute__((used)) static volatile struct limine_kernel_address_request kerne
 __attribute__((used)) static volatile struct limine_module_request module_request = {.id = LIMINE_MODULE_REQUEST,
                                                                                      .revision = 0};
 
+// Dedicated permanent kernel stack (64 KiB)
+#define KERNEL_STACK_SIZE 0x10000
+static uint8_t s_kernel_stack[KERNEL_STACK_SIZE] __attribute__((aligned(16)));
+
 void kernel_main(void);
 
 void kernel_main(void)
@@ -45,8 +49,10 @@ void kernel_main(void)
         hcf();
     }
 
-    // Assure that we have a framebuffer
-    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1)
+    // Assure that we have a framebuffer and critical boot responses
+    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1 ||
+        hhdm_request.response == NULL || mm_request.response == NULL ||
+        kernel_addr_request.response == NULL)
     {
         hcf();
     }
@@ -66,10 +72,13 @@ void kernel_main(void)
         serial_write(SERIAL_COM1, "x");
         serial_write(SERIAL_COM1, itoa((int)framebuffer->height, strBuffer, 10));
         serial_write(SERIAL_COM1, "\r\n");
+
+        serial_write(SERIAL_COM1, "[ OK ] Limine HHDM and Memmap verified\r\n");
     }
 
     // GDT - Global Descriptor Table
     gdt_init();
+    tss_set_rsp0((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE);
 
     // IDT - Interrupt Descriptor Table
 

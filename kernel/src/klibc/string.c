@@ -5,13 +5,14 @@
 
 void *memcpy(void *dest, const void *src, size_t n)
 {
-    uint8_t *pdest = dest;
-    const uint8_t *psrc = src;
+    void *d = dest;
+    const void *s = src;
+    size_t count = n;
 
-    for (size_t i = 0; i < n; i++)
-    {
-        pdest[i] = psrc[i];
-    }
+    asm volatile("rep movsb"
+                 : "+D"(d), "+S"(s), "+c"(count)
+                 :
+                 : "memory");
 
     return dest;
 }
@@ -28,17 +29,27 @@ void *memmove(void *dest, const void *src, size_t n)
 
     if (pdest < psrc)
     {
-        for (size_t i = 0; i < n; i++)
-        {
-            pdest[i] = psrc[i];
-        }
+        void *d = dest;
+        const void *s = src;
+        size_t count = n;
+
+        asm volatile("rep movsb"
+                     : "+D"(d), "+S"(s), "+c"(count)
+                     :
+                     : "memory");
     }
     else
     {
-        for (size_t i = n; i > 0; i--)
-        {
-            pdest[i - 1] = psrc[i - 1];
-        }
+        void *d = pdest + n - 1;
+        const void *s = psrc + n - 1;
+        size_t count = n;
+
+        asm volatile("std\n"
+                     "rep movsb\n"
+                     "cld\n"
+                     : "+D"(d), "+S"(s), "+c"(count)
+                     :
+                     : "memory");
     }
 
     return dest;
@@ -62,12 +73,13 @@ int memcmp(const void *s1, const void *s2, size_t n)
 
 void *memset(void *ptr, int value, size_t count)
 {
-    uint8_t *p = ptr;
+    void *d = ptr;
+    size_t c = count;
 
-    for (size_t i = 0; i < count; i++)
-    {
-        p[i] = (uint8_t)value;
-    }
+    asm volatile("rep stosb"
+                 : "+D"(d), "+c"(c)
+                 : "a"((uint8_t)value)
+                 : "memory");
 
     return ptr;
 }
