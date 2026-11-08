@@ -8,6 +8,7 @@
 
 #include "sys/cpu.h"
 #include "sys/gdt.h"
+#include "sys/idt.h"
 
 #include "drivers/serial.h"
 
@@ -46,13 +47,11 @@ static void kmain(void) __attribute__((noinline));
 void kernel_main(void)
 {
     // Switch to dedicated permanent kernel stack (s_kernel_stack)
-    asm volatile(
-        "mov %0, %%rsp\n"
-        "xor %%rbp, %%rbp\n"
-        :
-        : "r"((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE)
-        : "memory"
-    );
+    asm volatile("mov %0, %%rsp\n"
+                 "xor %%rbp, %%rbp\n"
+                 :
+                 : "r"((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE)
+                 : "memory");
 
     kmain();
 
@@ -67,9 +66,8 @@ static void kmain(void)
     }
 
     // Assure that we have a framebuffer and critical boot responses
-    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1 ||
-        hhdm_request.response == NULL || mm_request.response == NULL ||
-        kernel_addr_request.response == NULL)
+    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1 || hhdm_request.response == NULL ||
+        mm_request.response == NULL || kernel_addr_request.response == NULL)
     {
         hcf();
     }
@@ -98,6 +96,7 @@ static void kmain(void)
     tss_set_rsp0((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE);
 
     // IDT - Interrupt Descriptor Table
+    idt_init();
 
     // PMM - Physical Memory Manager
 
