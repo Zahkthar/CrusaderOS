@@ -1,7 +1,13 @@
 #include "drivers/serial.h"
 
-static bool s_com_available[4] = {false, false, false, false};
-static char s_last_char[4] = {0, 0, 0, 0};
+#include <stddef.h>
+
+#include "klibc/string.h"
+#include "sys/cpu.h"
+
+#define MAX_COM_PORTS 8
+static bool s_com_available[MAX_COM_PORTS] = {false};
+static char s_last_char[MAX_COM_PORTS] = {0};
 
 #define SERIAL_TIMEOUT 100000
 
@@ -17,6 +23,14 @@ static int serial_port_to_index(uint16_t comPort)
         return 2;
     case SERIAL_COM4:
         return 3;
+    case SERIAL_COM5:
+        return 4;
+    case SERIAL_COM6:
+        return 5;
+    case SERIAL_COM7:
+        return 6;
+    case SERIAL_COM8:
+        return 7;
     default:
         return -1;
     }
@@ -25,7 +39,7 @@ static int serial_port_to_index(uint16_t comPort)
 bool serial_is_available(uint16_t comPort)
 {
     int idx = serial_port_to_index(comPort);
-    if (idx >= 0 && idx < 4)
+    if (idx >= 0 && idx < MAX_COM_PORTS)
     {
         return s_com_available[idx];
     }
@@ -102,7 +116,7 @@ void serial_putchar(uint16_t comPort, char character)
     }
     outb(SERIAL_DATA_REGISTER(comPort), (uint8_t)character);
 
-    if (idx >= 0 && idx < 4)
+    if (idx >= 0 && idx < MAX_COM_PORTS)
     {
         s_last_char[idx] = character;
     }
@@ -111,7 +125,7 @@ void serial_putchar(uint16_t comPort, char character)
 int serial_init(uint16_t comPort)
 {
     int idx = serial_port_to_index(comPort);
-    if (idx >= 0 && idx < 4)
+    if (idx >= 0 && idx < MAX_COM_PORTS)
     {
         s_com_available[idx] = false;
         s_last_char[idx] = 0;
@@ -122,9 +136,20 @@ int serial_init(uint16_t comPort)
     outb(SERIAL_FIFO_CONTROL_REGISTER(comPort), 0xC7);     // Enable FIFO, clear them, with 14-byte threshold
 
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x1E);    // Set in loopback mode, test the serial chip
-    outb(SERIAL_DATA_REGISTER(comPort),
-         0xAE); // Test serial chip (send byte 0xAE and check if serial returns same byte)
-    if (inb(SERIAL_DATA_REGISTER(comPort) + 0) != 0xAE)
+    outb(SERIAL_DATA_REGISTER(comPort), 0xAE);             // Send test byte 0xAE
+    io_wait();
+
+    // Wait until byte is ready to read in loopback
+    uint32_t loopback_timeout = SERIAL_TIMEOUT;
+    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_DATA_READY) == 0)
+    {
+        if (--loopback_timeout == 0)
+        {
+            return 1;
+        }
+    }
+
+    if (inb(SERIAL_DATA_REGISTER(comPort)) != 0xAE)
     {
         return 1;
     }
@@ -133,7 +158,7 @@ int serial_init(uint16_t comPort)
     // (not-loopback with IRQs enabled and OUT#1 and OUT#2 bits enabled)
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x0F);
 
-    if (idx >= 0 && idx < 4)
+    if (idx >= 0 && idx < MAX_COM_PORTS)
     {
         s_com_available[idx] = true;
     }

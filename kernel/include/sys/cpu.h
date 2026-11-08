@@ -27,14 +27,7 @@
 void wrmsr(uint64_t msr, uint64_t value);
 uint64_t rdmsr(uint64_t msr);
 
-static inline void pat_enable_write_combining(void)
-{
-    uint64_t pat = rdmsr(MSR_PAT);
-    // Set PA2 (bits 18:16) to 0x01 (Write-Combining)
-    pat &= ~(0x7ULL << 16);
-    pat |= (0x1ULL << 16);
-    wrmsr(MSR_PAT, pat);
-}
+bool pat_enable_write_combining(void);
 
 // +----------------------------------+
 // | CPU-RELATED FUNCTIONS AND MACROS |

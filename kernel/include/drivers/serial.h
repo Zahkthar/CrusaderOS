@@ -2,11 +2,7 @@
 #define DRIVER_SERIAL_H_INCLUDED
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
-
-#include "klibc/string.h"
-#include "sys/cpu.h"
 
 // +--------------------+
 // | DEFINES AND MACROS |

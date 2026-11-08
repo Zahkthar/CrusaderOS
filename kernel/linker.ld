@@ -23,23 +23,29 @@ SECTIONS
     /* that is the beginning of the region. */
     . = 0xffffffff80000000;
 
+    __text_start = .;
     .text : {
         *(.text .text.*)
     } :text
+    __text_end = .;
 
     /* Move to the next memory page for .rodata */
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
 
+    __rodata_start = .;
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
+    __rodata_end = .;
 
     /* Move to the next memory page for .data */
-    . += CONSTANT(MAXPAGESIZE);
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
 
+    __data_start = .;
     .data : {
         *(.data .data.*)
     } :data
+    __data_end = .;
 
     /* Dynamic section for relocations, both in its own PHDR and inside data PHDR */
     .dynamic : {
@@ -50,10 +56,12 @@ SECTIONS
     /* unnecessary zeros will be written to the binary. */
     /* If you need, for example, .init_array and .fini_array, those should be placed */
     /* above this. */
+    __bss_start = .;
     .bss : {
         *(.bss .bss.*)
         *(COMMON)
     } :data
+    __bss_end = .;
 
     /* Discard .note.* and .eh_frame since they may cause issues on some hosts. */
     /DISCARD/ : {

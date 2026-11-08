@@ -13,6 +13,7 @@
 // +-----------------------------------+
 
 bool framebuffer_init_backbuffer(struct limine_framebuffer *framebuffer);
+bool framebuffer_is_backbuffer_enabled(void);
 void framebuffer_swap(struct limine_framebuffer *framebuffer);
 void framebuffer_clear(struct limine_framebuffer *framebuffer, uint32_t rgbColor);
 

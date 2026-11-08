@@ -41,8 +41,25 @@ __attribute__((used)) static volatile struct limine_module_request module_reques
 static uint8_t s_kernel_stack[KERNEL_STACK_SIZE] __attribute__((aligned(16)));
 
 void kernel_main(void);
+static void kmain(void) __attribute__((noinline));
 
 void kernel_main(void)
+{
+    // Switch to dedicated permanent kernel stack (s_kernel_stack)
+    asm volatile(
+        "mov %0, %%rsp\n"
+        "xor %%rbp, %%rbp\n"
+        :
+        : "r"((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE)
+        : "memory"
+    );
+
+    kmain();
+
+    hcf();
+}
+
+static void kmain(void)
 {
     if (LIMINE_BASE_REVISION_SUPPORTED == false)
     {
@@ -88,8 +105,23 @@ void kernel_main(void)
 
     // Paging
 
-    pat_enable_write_combining();
-    framebuffer_init_backbuffer(framebuffer);
+    if (pat_enable_write_combining())
+    {
+        serial_write(SERIAL_COM1, "[ OK ] PAT Write-Combining configured (PA2=WC)\r\n");
+    }
+    else
+    {
+        serial_write(SERIAL_COM1, "[ WARN ] CPU does not support PAT\r\n");
+    }
+
+    if (framebuffer_init_backbuffer(framebuffer))
+    {
+        serial_write(SERIAL_COM1, "[ OK ] Framebuffer backbuffer initialized (double buffering active)\r\n");
+    }
+    else
+    {
+        serial_write(SERIAL_COM1, "[ WARN ] Resolution exceeds backbuffer capacity, falling back to direct VRAM\r\n");
+    }
 
     framebuffer_clear(framebuffer, RGB_BLACK);
 

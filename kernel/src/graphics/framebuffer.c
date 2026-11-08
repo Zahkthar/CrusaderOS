@@ -21,10 +21,16 @@ bool framebuffer_init_backbuffer(struct limine_framebuffer *framebuffer)
 {
     if (framebuffer == NULL || (framebuffer->width * framebuffer->height) > FRAMEBUFFER_MAX_PIXELS)
     {
+        s_backbuffer_enabled = false;
         return false;
     }
     s_backbuffer_enabled = true;
     return true;
+}
+
+bool framebuffer_is_backbuffer_enabled(void)
+{
+    return s_backbuffer_enabled;
 }
 
 void framebuffer_swap(struct limine_framebuffer *framebuffer)
@@ -40,18 +46,50 @@ void framebuffer_swap(struct limine_framebuffer *framebuffer)
         bytes_per_pixel = 4;
     }
 
-    // Fast path: contiguous 32 bpp
+    // 32 bpp fast path: contiguous full buffer
     if (bytes_per_pixel == 4 && framebuffer->pitch == framebuffer->width * 4)
     {
         memcpy(framebuffer->address, s_backbuffer, framebuffer->width * framebuffer->height * 4);
     }
-    else
+    // 32 bpp row by row (pitch > width * 4)
+    else if (bytes_per_pixel == 4)
     {
         volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
         for (size_t y = 0; y < framebuffer->height; y++)
         {
             memcpy((void *)(vram + y * framebuffer->pitch), &s_backbuffer[y * framebuffer->width],
-                   framebuffer->width * bytes_per_pixel);
+                   framebuffer->width * 4);
+        }
+    }
+    // 16 bpp: convert each 32-bit backbuffer pixel to 16-bit
+    else if (bytes_per_pixel == 2)
+    {
+        volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
+        for (size_t y = 0; y < framebuffer->height; y++)
+        {
+            volatile uint16_t *dst_row = (volatile uint16_t *)(vram + y * framebuffer->pitch);
+            const uint32_t *src_row = &s_backbuffer[y * framebuffer->width];
+            for (size_t x = 0; x < framebuffer->width; x++)
+            {
+                dst_row[x] = (uint16_t)src_row[x];
+            }
+        }
+    }
+    // 24 bpp: write 3 bytes per pixel
+    else if (bytes_per_pixel == 3)
+    {
+        volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
+        for (size_t y = 0; y < framebuffer->height; y++)
+        {
+            volatile uint8_t *dst_row = vram + y * framebuffer->pitch;
+            const uint32_t *src_row = &s_backbuffer[y * framebuffer->width];
+            for (size_t x = 0; x < framebuffer->width; x++)
+            {
+                uint32_t pixel = src_row[x];
+                dst_row[x * 3 + 0] = (uint8_t)(pixel & 0xFF);
+                dst_row[x * 3 + 1] = (uint8_t)((pixel >> 8) & 0xFF);
+                dst_row[x * 3 + 2] = (uint8_t)((pixel >> 16) & 0xFF);
+            }
         }
     }
 }

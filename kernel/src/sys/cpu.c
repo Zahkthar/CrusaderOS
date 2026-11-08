@@ -18,6 +18,23 @@ uint64_t rdmsr(uint64_t msr)
     return ((uint64_t)high << 32) | low;
 }
 
+bool pat_enable_write_combining(void)
+{
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(1, &eax, &ebx, &ecx, &edx);
+    if ((edx & CPUID_EDX_PAT) == 0)
+    {
+        return false;
+    }
+
+    uint64_t pat = rdmsr(MSR_PAT);
+    // Set PA2 (bits 18:16) to 0x01 (Write-Combining)
+    pat &= ~(0x7ULL << 16);
+    pat |= (0x1ULL << 16);
+    wrmsr(MSR_PAT, pat);
+    return true;
+}
+
 // +-----------------------+
 // | CPU-RELATED FUNCTIONS |
 // +-----------------------+
