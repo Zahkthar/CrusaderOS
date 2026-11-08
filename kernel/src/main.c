@@ -7,6 +7,8 @@
 #include "graphics/framebuffer.h"
 #include "klibc/stdio.h"
 #include "klibc/stdlib.h"
+#include "klibc/string.h"
+#include "memory/heap.h"
 #include "memory/pmm.h"
 #include "memory/vmm.h"
 #include "sys/boot_info.h"
@@ -96,6 +98,29 @@ void kmain(void)
         }
         vmm_unmap_page(vmm_get_kernel_directory(), test_vaddr);
         pmm_free_page(phys_frame);
+    }
+
+    // Heap (Kernel Dynamic Memory Allocator)
+    heap_init();
+
+    // Quick verification test for kmalloc/kfree/kcalloc/krealloc
+    char *buf1 = (char *)kmalloc(64);
+    int *buf2 = (int *)kcalloc(10, sizeof(int));
+    if (buf1 != NULL && buf2 != NULL)
+    {
+        strcpy(buf1, "CrusaderOS Kernel Heap is operational!");
+        buf2[9] = 42;
+        kprintf("[ TEST ] kmalloc allocated: \"%s\" (at %p)\r\n", buf1, buf1);
+        kprintf("[ TEST ] kcalloc allocated array (val at idx 9: %d, at %p)\r\n", buf2[9], buf2);
+
+        buf1 = (char *)krealloc(buf1, 128);
+        strcat(buf1, " [Reallocated]");
+        kprintf("[ TEST ] krealloc expanded: \"%s\" (at %p)\r\n", buf1, buf1);
+
+        kfree(buf1);
+        kfree(buf2);
+        kprintf("[ OK ] kmalloc/kfree/kcalloc/krealloc cycle verified (%zu KiB free)\r\n",
+                heap_get_free_size() / 1024);
     }
 
     // Framebuffer Double Buffering
