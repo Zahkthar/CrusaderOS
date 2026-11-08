@@ -1,6 +1,9 @@
 #include "drivers/serial.h"
 
 static bool s_com_available[4] = {false, false, false, false};
+static char s_last_char[4] = {0, 0, 0, 0};
+
+#define SERIAL_TIMEOUT 100000
 
 static int serial_port_to_index(uint16_t comPort)
 {
@@ -73,11 +76,36 @@ void serial_putchar(uint16_t comPort, char character)
         return;
     }
 
+    int idx = serial_port_to_index(comPort);
+
+    // If character is '\n' and wasn't preceded by '\r', emit '\r' first (CRLF)
+    if (character == '\n' && (idx < 0 || s_last_char[idx] != '\r'))
+    {
+        uint32_t cr_timeout = SERIAL_TIMEOUT;
+        while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
+        {
+            if (--cr_timeout == 0)
+            {
+                return;
+            }
+        }
+        outb(SERIAL_DATA_REGISTER(comPort), '\r');
+    }
+
+    uint32_t timeout = SERIAL_TIMEOUT;
     while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
     {
-        // Wait for transmit buffer to empty
+        if (--timeout == 0)
+        {
+            return;
+        }
     }
     outb(SERIAL_DATA_REGISTER(comPort), (uint8_t)character);
+
+    if (idx >= 0 && idx < 4)
+    {
+        s_last_char[idx] = character;
+    }
 }
 
 int serial_init(uint16_t comPort)
@@ -86,12 +114,12 @@ int serial_init(uint16_t comPort)
     if (idx >= 0 && idx < 4)
     {
         s_com_available[idx] = false;
+        s_last_char[idx] = 0;
     }
 
     outb(SERIAL_INTERRUPT_ENABLE_REGISTER(comPort), 0x00); // Disable all interrupts
     setLineProtocol(comPort, 1, 8, 0, SERIAL_PARITY_NONE); // 115200 bauds, 8 bits per char, 1 stop bit, no parity
     outb(SERIAL_FIFO_CONTROL_REGISTER(comPort), 0xC7);     // Enable FIFO, clear them, with 14-byte threshold
-    outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x0B);    // IRQs enabled, RTS/DSR set
 
     outb(SERIAL_MODEM_CONTROL_REGISTER(comPort), 0x1E);    // Set in loopback mode, test the serial chip
     outb(SERIAL_DATA_REGISTER(comPort),
@@ -124,9 +152,13 @@ uint8_t serial_read(uint16_t comPort)
         return 0;
     }
 
+    uint32_t timeout = SERIAL_TIMEOUT;
     while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_DATA_READY) == 0)
     {
-        // Wait for incoming byte
+        if (--timeout == 0)
+        {
+            return 0;
+        }
     }
     return inb(SERIAL_DATA_REGISTER(comPort));
 }

@@ -1,6 +1,8 @@
 #ifndef SYS_GDT_H_INCLUDED
 #define SYS_GDT_H_INCLUDED
 
+#include <stdint.h>
+
 void gdt_init(void);
 void tss_set_rsp0(uint64_t rsp0);
 
