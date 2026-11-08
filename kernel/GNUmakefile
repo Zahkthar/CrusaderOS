@@ -53,6 +53,7 @@ override CFLAGS += \
     -Wpointer-arith \
     -std=gnu11 \
     -ffreestanding \
+    -fno-builtin \
     -fno-stack-protector \
     -fno-stack-check \
     -fno-lto \

@@ -2,6 +2,35 @@
 
 #include <stdint.h>
 
+#include "klibc/string.h"
+
+// GDT Selectors
+#define GDT_KERNEL_CODE_SELECTOR 0x08
+#define GDT_KERNEL_DATA_SELECTOR 0x10
+#define GDT_USER_DATA_SELECTOR   0x18
+#define GDT_USER_CODE_SELECTOR   0x20
+#define GDT_TSS_SELECTOR         0x28
+
+// Task State Segment (TSS) for x86_64
+typedef struct TSS
+{
+    uint32_t reserved0;
+    uint64_t rsp0;
+    uint64_t rsp1;
+    uint64_t rsp2;
+    uint64_t reserved1;
+    uint64_t ist1;
+    uint64_t ist2;
+    uint64_t ist3;
+    uint64_t ist4;
+    uint64_t ist5;
+    uint64_t ist6;
+    uint64_t ist7;
+    uint64_t reserved2;
+    uint16_t reserved3;
+    uint16_t iopb_offset;
+} __attribute__((packed)) TSS;
+
 typedef struct GDTEntry
 {
     uint16_t limitLow;
@@ -30,7 +59,7 @@ typedef enum GDTAccessByte
     GDT_ACCESS_DATA_SEGMENT = 0x10,
     GDT_ACCESS_CODE_SEGMENT = 0x18,
 
-    GDT_ACCESS_DESCRIPTOR_TSS = 0x00,
+    GDT_ACCESS_DESCRIPTOR_TSS = 0x09,
 
     GDT_ACCESS_RING0 = 0x00,
     GDT_ACCESS_RING1 = 0x20,
@@ -51,43 +80,72 @@ typedef enum
 } GDT_FLAGS;
 
 // Helper macros
-#define GDT_LIMIT_LOW(limit)             (limit & 0xFFFF)
-#define GDT_BASE_LOW(base)               (base & 0xFFFF)
-#define GDT_BASE_MIDDLE(base)            ((base >> 16) & 0xFF)
-#define GDT_FLAGS_LIMIT_HI(limit, flags) (((limit >> 16) & 0xF) | (flags & 0xF0))
-#define GDT_BASE_HIGH(base)              ((base >> 24) & 0xFF)
+#define GDT_LIMIT_LOW(limit)             ((limit) & 0xFFFF)
+#define GDT_BASE_LOW(base)               ((base) & 0xFFFF)
+#define GDT_BASE_MIDDLE(base)            (((base) >> 16) & 0xFF)
+#define GDT_FLAGS_LIMIT_HI(limit, flags) ((((limit) >> 16) & 0xF) | ((flags) & 0xF0))
+#define GDT_BASE_HIGH(base)              (((base) >> 24) & 0xFF)
 
 #define GDT_ENTRY(base, limit, access, flags)                                                                          \
     {GDT_LIMIT_LOW(limit), GDT_BASE_LOW(base), GDT_BASE_MIDDLE(base), access, GDT_FLAGS_LIMIT_HI(limit, flags),        \
      GDT_BASE_HIGH(base)}
 
-static GDTEntry g_GDT[] = {
-    // NULL descriptor
+static GDTEntry g_GDT[7] = {
+    // 0x00: NULL descriptor
     GDT_ENTRY(0, 0, 0, 0),
 
-    // Kernel mode code segment
+    // 0x08: Kernel mode code segment (Ring 0, 64-bit)
     GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING0 | GDT_ACCESS_CODE_SEGMENT | GDT_ACCESS_CODE_READABLE),
               (GDT_FLAG_64BIT | GDT_FLAG_GRANULARITY_4K)),
 
-    // Kernel mode data segment
+    // 0x10: Kernel mode data segment (Ring 0)
     GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING0 | GDT_ACCESS_DATA_SEGMENT | GDT_ACCESS_DATA_WRITEABLE),
               (GDT_FLAG_32BIT | GDT_FLAG_GRANULARITY_4K)),
 
-    // User mode code segment
+    // 0x18: User mode data segment (Ring 3)
+    GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING3 | GDT_ACCESS_DATA_SEGMENT | GDT_ACCESS_DATA_WRITEABLE),
+              (GDT_FLAG_32BIT | GDT_FLAG_GRANULARITY_4K)),
+
+    // 0x20: User mode code segment (Ring 3, 64-bit)
     GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING3 | GDT_ACCESS_CODE_SEGMENT | GDT_ACCESS_CODE_READABLE),
               (GDT_FLAG_64BIT | GDT_FLAG_GRANULARITY_4K)),
 
-    // User mode data segment
-    GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING3 | GDT_ACCESS_DATA_SEGMENT | GDT_ACCESS_DATA_WRITEABLE),
-              (GDT_FLAG_32BIT | GDT_FLAG_GRANULARITY_4K))
-
-    // TSS
+    // 0x28 & 0x30: TSS (16 octets / 2 entrées GDT, initialisé dynamiquement)
+    GDT_ENTRY(0, 0, 0, 0),
+    GDT_ENTRY(0, 0, 0, 0)
 };
 
 static GDTDescriptor g_GDTDescriptor = {sizeof(g_GDT) - 1, g_GDT};
+static TSS g_TSS;
+
+static void gdt_set_tss(int index, uintptr_t base, uint32_t limit)
+{
+    g_GDT[index].limitLow = (uint16_t)(limit & 0xFFFF);
+    g_GDT[index].baseLow = (uint16_t)(base & 0xFFFF);
+    g_GDT[index].baseMiddle = (uint8_t)((base >> 16) & 0xFF);
+    g_GDT[index].accessByte = GDT_ACCESS_PRESENT | GDT_ACCESS_RING0 | GDT_ACCESS_DESCRIPTOR_TSS;
+    g_GDT[index].limitHighFlags = (uint8_t)((limit >> 16) & 0x0F);
+    g_GDT[index].baseHigh = (uint8_t)((base >> 24) & 0xFF);
+
+    uint32_t *high_entry = (uint32_t *)&g_GDT[index + 1];
+    high_entry[0] = (uint32_t)(base >> 32);
+    high_entry[1] = 0;
+}
+
+void tss_set_rsp0(uint64_t rsp0)
+{
+    g_TSS.rsp0 = rsp0;
+}
 
 void gdt_init(void)
 {
+    // Initialisation du TSS
+    memset(&g_TSS, 0, sizeof(g_TSS));
+    g_TSS.iopb_offset = sizeof(g_TSS);
+
+    // Configuration de l'entrée TSS dans la GDT (sélecteur 0x28)
+    gdt_set_tss(5, (uintptr_t)&g_TSS, sizeof(g_TSS) - 1);
+
     // Charger la table GDT et recharger CS ainsi que les segments de données
     asm volatile("lgdt (%0)\n"
                  "push $0x08\n" // 0x08 = offset du segment de code noyau 64-bit
@@ -104,4 +162,7 @@ void gdt_init(void)
                  :
                  : "r"(&g_GDTDescriptor)
                  : "rax", "memory");
+
+    // Charger le sélecteur TSS dans le Task Register (TR)
+    asm volatile("ltr %%ax" : : "a"((uint16_t)GDT_TSS_SELECTOR));
 }
