@@ -2,13 +2,6 @@
 
 #include "klibc/string.h"
 
-// GDT Selectors
-#define GDT_KERNEL_CODE_SELECTOR 0x08
-#define GDT_KERNEL_DATA_SELECTOR 0x10
-#define GDT_USER_DATA_SELECTOR   0x18
-#define GDT_USER_CODE_SELECTOR   0x20
-#define GDT_TSS_SELECTOR         0x28
-
 // Task State Segment (TSS) for x86_64
 typedef struct TSS
 {
@@ -88,7 +81,7 @@ typedef enum
     {GDT_LIMIT_LOW(limit), GDT_BASE_LOW(base), GDT_BASE_MIDDLE(base), access, GDT_FLAGS_LIMIT_HI(limit, flags),        \
      GDT_BASE_HIGH(base)}
 
-static GDTEntry g_GDT[7] = {
+static GDTEntry g_GDT[8] = {
     // 0x00: NULL descriptor
     GDT_ENTRY(0, 0, 0, 0),
 
@@ -100,15 +93,19 @@ static GDTEntry g_GDT[7] = {
     GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING0 | GDT_ACCESS_DATA_SEGMENT | GDT_ACCESS_DATA_WRITEABLE),
               (GDT_FLAG_32BIT | GDT_FLAG_GRANULARITY_4K)),
 
-    // 0x18: User mode data segment (Ring 3)
+    // 0x18: User mode code segment 32-bit (Ring 3, compatibility mode required by SYSRET)
+    GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING3 | GDT_ACCESS_CODE_SEGMENT | GDT_ACCESS_CODE_READABLE),
+              (GDT_FLAG_32BIT | GDT_FLAG_GRANULARITY_4K)),
+
+    // 0x20: User mode data segment (Ring 3)
     GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING3 | GDT_ACCESS_DATA_SEGMENT | GDT_ACCESS_DATA_WRITEABLE),
               (GDT_FLAG_32BIT | GDT_FLAG_GRANULARITY_4K)),
 
-    // 0x20: User mode code segment (Ring 3, 64-bit)
+    // 0x28: User mode code segment 64-bit (Ring 3)
     GDT_ENTRY(0, 0xFFFFF, (GDT_ACCESS_PRESENT | GDT_ACCESS_RING3 | GDT_ACCESS_CODE_SEGMENT | GDT_ACCESS_CODE_READABLE),
               (GDT_FLAG_64BIT | GDT_FLAG_GRANULARITY_4K)),
 
-    // 0x28 & 0x30: TSS (16 octets / 2 entrées GDT, initialisé dynamiquement)
+    // 0x30 & 0x38: TSS (16 octets / 2 entrées GDT, initialisé dynamiquement)
     GDT_ENTRY(0, 0, 0, 0),
     GDT_ENTRY(0, 0, 0, 0)
 };
@@ -141,8 +138,8 @@ void gdt_init(void)
     memset(&g_TSS, 0, sizeof(g_TSS));
     g_TSS.iopb_offset = sizeof(g_TSS);
 
-    // Configuration de l'entrée TSS dans la GDT (sélecteur 0x28)
-    gdt_set_tss(5, (uintptr_t)&g_TSS, sizeof(g_TSS) - 1);
+    // Configuration de l'entrée TSS dans la GDT (sélecteur 0x30, index 6)
+    gdt_set_tss(6, (uintptr_t)&g_TSS, sizeof(g_TSS) - 1);
 
     // Charger la table GDT et recharger CS ainsi que les segments de données
     asm volatile("lgdt (%0)\n"
@@ -155,6 +152,9 @@ void gdt_init(void)
                  "mov %%ax, %%ds\n"
                  "mov %%ax, %%es\n"
                  "mov %%ax, %%ss\n"
+                 "xor %%ax, %%ax\n"  // Clear FS et GS pour mode 64-bit
+                 "mov %%ax, %%fs\n"
+                 "mov %%ax, %%gs\n"
                  :
                  : "r"(&g_GDTDescriptor)
                  : "rax", "memory");
