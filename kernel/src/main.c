@@ -88,8 +88,16 @@ void kernel_main(void)
 
     // Paging
 
+    pat_enable_write_combining();
+    framebuffer_init_backbuffer(framebuffer);
+
+    framebuffer_clear(framebuffer, RGB_BLACK);
+
     framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
     framebuffer_drawRect(framebuffer, (Rect){200, 50, 100, 100}, RGB_RED);
+    framebuffer_drawLine(framebuffer, (Vec2){50, 200}, (Vec2){300, 250}, RGB_WHITE);
+
+    framebuffer_swap(framebuffer);
 
     hcf(); // Done
 }
