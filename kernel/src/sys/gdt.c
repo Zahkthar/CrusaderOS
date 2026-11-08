@@ -35,7 +35,7 @@ typedef struct GDTEntry
 typedef struct GDTDescriptor
 {
     uint16_t size;
-    GDTEntry *entries;
+    uint64_t base;
 } __attribute__((packed)) GDTDescriptor;
 
 typedef enum GDTAccessByte
@@ -110,7 +110,6 @@ static GDTEntry g_GDT[8] = {
     GDT_ENTRY(0, 0, 0, 0)
 };
 
-static GDTDescriptor g_GDTDescriptor = {sizeof(g_GDT) - 1, g_GDT};
 static TSS g_TSS;
 
 static void gdt_set_tss(int index, uintptr_t base, uint32_t limit)
@@ -141,6 +140,13 @@ void gdt_init(void)
     // Configuration de l'entrée TSS dans la GDT (sélecteur 0x30, index 6)
     gdt_set_tss(6, (uintptr_t)&g_TSS, sizeof(g_TSS) - 1);
 
+    // Descripteur GDTR alloué localement sur la pile
+    // Élimine toute relocalisation non alignée dans la section .data / .rela.dyn
+    volatile GDTDescriptor gdtr = {
+        .size = sizeof(g_GDT) - 1,
+        .base = (uint64_t)&g_GDT
+    };
+
     // Charger la table GDT et recharger CS ainsi que les segments de données
     asm volatile("lgdt (%0)\n"
                  "push $0x08\n" // 0x08 = offset du segment de code noyau 64-bit
@@ -152,11 +158,8 @@ void gdt_init(void)
                  "mov %%ax, %%ds\n"
                  "mov %%ax, %%es\n"
                  "mov %%ax, %%ss\n"
-                 "xor %%ax, %%ax\n"  // Clear FS et GS pour mode 64-bit
-                 "mov %%ax, %%fs\n"
-                 "mov %%ax, %%gs\n"
                  :
-                 : "r"(&g_GDTDescriptor)
+                 : "r"(&gdtr)
                  : "rax", "memory");
 
     // Charger le sélecteur TSS dans le Task Register (TR)
