@@ -8,6 +8,7 @@
 #include "klibc/stdio.h"
 #include "klibc/stdlib.h"
 #include "memory/pmm.h"
+#include "memory/vmm.h"
 #include "sys/boot_info.h"
 #include "sys/cpu.h"
 #include "sys/gdt.h"
@@ -72,6 +73,29 @@ void kmain(void)
     else
     {
         kprintf("[ WARN ] CPU does not support PAT\r\n");
+    }
+
+    // VMM (Virtual Memory Manager)
+    vmm_init(boot_info);
+
+    // Quick verification test for VMM
+    void *phys_frame = pmm_alloc_page();
+    uint64_t test_vaddr = 0xffffdead00000000ULL;
+    if (vmm_map_page(vmm_get_kernel_directory(), test_vaddr, (uint64_t)phys_frame,
+                     PTE_PRESENT | PTE_WRITABLE | PTE_NO_EXECUTE))
+    {
+        volatile uint32_t *test_ptr = (volatile uint32_t *)test_vaddr;
+        *test_ptr = 0x1337CAFE;
+        uint32_t read_back = *test_ptr;
+        uint64_t resolved_phys = vmm_virt_to_phys(vmm_get_kernel_directory(), test_vaddr);
+
+        if (read_back == 0x1337CAFE && resolved_phys == (uint64_t)phys_frame)
+        {
+            kprintf("[ OK ] VMM virtual mapping verified (vaddr %p -> phys %p, value 0x%x)\r\n", (void *)test_vaddr,
+                    (void *)resolved_phys, (unsigned int)read_back);
+        }
+        vmm_unmap_page(vmm_get_kernel_directory(), test_vaddr);
+        pmm_free_page(phys_frame);
     }
 
     // Framebuffer Double Buffering
