@@ -1,6 +1,7 @@
 #include "sys/idt.h"
 
 #include "drivers/serial.h"
+#include "klibc/stdio.h"
 #include "klibc/stdlib.h"
 #include "klibc/string.h"
 #include "sys/cpu.h"
@@ -154,106 +155,34 @@ static const char *idt_get_exception_name(uint64_t vector)
     }
 }
 
-static void serial_write_hex64(uint16_t port, uint64_t val)
-{
-    char buf[19];
-    buf[0] = '0';
-    buf[1] = 'x';
-    for (int i = 0; i < 16; i++)
-    {
-        int shift = (15 - i) * 4;
-        uint8_t nibble = (uint8_t)((val >> shift) & 0x0F);
-        buf[2 + i] = (nibble < 10) ? (char)('0' + nibble) : (char)('A' + (nibble - 10));
-    }
-    buf[18] = '\0';
-    serial_write(port, buf);
-}
-
-static void serial_write_reg(uint16_t port, const char *name, uint64_t val)
-{
-    serial_write(port, name);
-    serial_write(port, ": ");
-    serial_write_hex64(port, val);
-}
-
 static void idt_panic_dump(InterruptRegisters *regs)
 {
-    char buf[32];
-
-    serial_write(SERIAL_COM1, "\r\n==================== KERNEL PANIC: CPU EXCEPTION ====================\r\n");
-    serial_write(SERIAL_COM1, "Exception: ");
-    serial_write(SERIAL_COM1, idt_get_exception_name(regs->vector));
-    serial_write(SERIAL_COM1, " (Vector ");
-    serial_write(SERIAL_COM1, itoa((int)regs->vector, buf, 10));
-    serial_write(SERIAL_COM1, ")\r\n");
-
-    serial_write_reg(SERIAL_COM1, "Error Code", regs->errorCode);
-    serial_write(SERIAL_COM1, "\r\n");
+    kprintf("\r\n==================== KERNEL PANIC: CPU EXCEPTION ====================\r\n");
+    kprintf("Exception: %s (Vector %d)\r\n", idt_get_exception_name(regs->vector), (int)regs->vector);
+    kprintf("Error Code: 0x%016lx\r\n", regs->errorCode);
 
     if (regs->vector == 14)
     {
         uint64_t cr2 = read_cr2();
-        serial_write_reg(SERIAL_COM1, "Faulting Address (CR2)", cr2);
-        serial_write(SERIAL_COM1, "\r\n");
+        kprintf("Faulting Address (CR2): 0x%016lx\r\n", cr2);
     }
 
-    serial_write(SERIAL_COM1, "\r\n--- Execution Context ---\r\n");
-    serial_write_reg(SERIAL_COM1, "RIP   ", regs->rip);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "CS    ", regs->cs);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "RFLAGS", regs->rflags);
-    serial_write(SERIAL_COM1, "\r\n");
+    kprintf("\r\n--- Execution Context ---\r\n");
+    kprintf("RIP   : 0x%016lx  CS    : 0x%016lx  RFLAGS: 0x%016lx\r\n", regs->rip, regs->cs, regs->rflags);
+    kprintf("RSP   : 0x%016lx  SS    : 0x%016lx  RBP   : 0x%016lx\r\n", regs->rsp, regs->ss, regs->rbp);
 
-    serial_write_reg(SERIAL_COM1, "RSP   ", regs->rsp);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "SS    ", regs->ss);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "RBP   ", regs->rbp);
-    serial_write(SERIAL_COM1, "\r\n");
+    kprintf("\r\n--- General Purpose Registers ---\r\n");
+    kprintf("RAX   : 0x%016lx  RBX   : 0x%016lx  RCX   : 0x%016lx\r\n", regs->rax, regs->rbx, regs->rcx);
+    kprintf("RDX   : 0x%016lx  RSI   : 0x%016lx  RDI   : 0x%016lx\r\n", regs->rdx, regs->rsi, regs->rdi);
+    kprintf("R8    : 0x%016lx  R9    : 0x%016lx  R10   : 0x%016lx\r\n", regs->r8, regs->r9, regs->r10);
+    kprintf("R11   : 0x%016lx  R12   : 0x%016lx  R13   : 0x%016lx\r\n", regs->r11, regs->r12, regs->r13);
+    kprintf("R14   : 0x%016lx  R15   : 0x%016lx\r\n", regs->r14, regs->r15);
 
-    serial_write(SERIAL_COM1, "\r\n--- General Purpose Registers ---\r\n");
-    serial_write_reg(SERIAL_COM1, "RAX   ", regs->rax);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "RBX   ", regs->rbx);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "RCX   ", regs->rcx);
-    serial_write(SERIAL_COM1, "\r\n");
+    kprintf("\r\n--- Control Registers ---\r\n");
+    kprintf("CR0   : 0x%016lx  CR3   : 0x%016lx\r\n", read_cr0(), read_cr3());
 
-    serial_write_reg(SERIAL_COM1, "RDX   ", regs->rdx);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "RSI   ", regs->rsi);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "RDI   ", regs->rdi);
-    serial_write(SERIAL_COM1, "\r\n");
-
-    serial_write_reg(SERIAL_COM1, "R8    ", regs->r8);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "R9    ", regs->r9);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "R10   ", regs->r10);
-    serial_write(SERIAL_COM1, "\r\n");
-
-    serial_write_reg(SERIAL_COM1, "R11   ", regs->r11);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "R12   ", regs->r12);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "R13   ", regs->r13);
-    serial_write(SERIAL_COM1, "\r\n");
-
-    serial_write_reg(SERIAL_COM1, "R14   ", regs->r14);
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "R15   ", regs->r15);
-    serial_write(SERIAL_COM1, "\r\n");
-
-    serial_write(SERIAL_COM1, "\r\n--- Control Registers ---\r\n");
-    serial_write_reg(SERIAL_COM1, "CR0   ", read_cr0());
-    serial_write(SERIAL_COM1, "  ");
-    serial_write_reg(SERIAL_COM1, "CR3   ", read_cr3());
-    serial_write(SERIAL_COM1, "\r\n");
-
-    serial_write(SERIAL_COM1, "======================================================================\r\n");
-    serial_write(SERIAL_COM1, "[ CRITICAL ] Kernel halted due to unhandled CPU exception.\r\n");
+    kprintf("======================================================================\r\n");
+    kprintf("[ CRITICAL ] Kernel halted due to unhandled CPU exception.\r\n");
 
     hcf();
 }
@@ -297,10 +226,7 @@ void idt_dispatch_interrupt(InterruptRegisters *regs)
     }
     else
     {
-        char buf[32];
-        serial_write(SERIAL_COM1, "[ WARN ] Unhandled interrupt vector: ");
-        serial_write(SERIAL_COM1, itoa((int)regs->vector, buf, 10));
-        serial_write(SERIAL_COM1, "\r\n");
+        kprintf("[ WARN ] Unhandled interrupt vector: %d\r\n", (int)regs->vector);
     }
 }
 
@@ -315,6 +241,9 @@ void idt_init(void)
         idt_set_gate((uint8_t)i, isr, IDT_ATTR_KERNEL_INTERRUPT, 0);
     }
 
+    // Vector 8: Double Fault (#DF) uses dedicated IST1 stack to prevent Triple Fault
+    idt_set_gate(8, (void *)((uintptr_t)isr_stub_table + (8 * 16)), IDT_ATTR_KERNEL_INTERRUPT, 1);
+
     // Allow breakpoint exception (#BP) to be triggered from user mode (Ring 3)
     idt_set_gate(3, (void *)((uintptr_t)isr_stub_table + (3 * 16)), IDT_ATTR_USER_INTERRUPT, 0);
 
@@ -327,5 +256,5 @@ void idt_init(void)
 
     asm volatile("lidt (%0)" : : "r"(&idtr) : "memory");
 
-    serial_write(SERIAL_COM1, "[ OK ] IDT initialized (256 vectors configured)\r\n");
+    kprintf("[ OK ] IDT initialized (256 vectors configured, IST1 for #DF)\r\n");
 }

@@ -2,133 +2,129 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "klibc/stdlib.h"
-
 #include <limine.h>
 
+#include "drivers/serial.h"
+#include "graphics/colors.h"
+#include "graphics/framebuffer.h"
+#include "klibc/stdio.h"
+#include "klibc/stdlib.h"
 #include "sys/cpu.h"
 #include "sys/gdt.h"
 #include "sys/idt.h"
 
-#include "drivers/serial.h"
-
-#include "graphics/colors.h"
-#include "graphics/framebuffer.h"
-
 // Limine requests
-
 __attribute__((used)) static volatile LIMINE_BASE_REVISION(1);
 
-__attribute__((used)) static volatile struct limine_framebuffer_request fb_request = {.id = LIMINE_FRAMEBUFFER_REQUEST,
-                                                                                      .revision = 0};
+__attribute__((used)) static volatile struct limine_framebuffer_request fb_request = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0
+};
 
-__attribute__((used)) static volatile struct limine_hhdm_request hhdm_request = {.id = LIMINE_HHDM_REQUEST,
-                                                                                 .revision = 0};
+__attribute__((used)) static volatile struct limine_hhdm_request hhdm_request = {
+    .id = LIMINE_HHDM_REQUEST,
+    .revision = 0
+};
 
-__attribute__((used)) static volatile struct limine_memmap_request mm_request = {.id = LIMINE_MEMMAP_REQUEST,
-                                                                                 .revision = 0};
+__attribute__((used)) static volatile struct limine_memmap_request mm_request = {
+    .id = LIMINE_MEMMAP_REQUEST,
+    .revision = 0
+};
 
-__attribute__((used)) static volatile struct limine_rsdp_request rsdp_request = {.id = LIMINE_RSDP_REQUEST,
-                                                                                 .revision = 0};
+__attribute__((used)) static volatile struct limine_rsdp_request rsdp_request = {
+    .id = LIMINE_RSDP_REQUEST,
+    .revision = 0
+};
 
 __attribute__((used)) static volatile struct limine_kernel_address_request kernel_addr_request = {
-    .id = LIMINE_KERNEL_ADDRESS_REQUEST, .revision = 0};
+    .id = LIMINE_KERNEL_ADDRESS_REQUEST,
+    .revision = 0
+};
 
-__attribute__((used)) static volatile struct limine_module_request module_request = {.id = LIMINE_MODULE_REQUEST,
-                                                                                     .revision = 0};
+__attribute__((used)) static volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST,
+    .revision = 0
+};
 
-// Dedicated permanent kernel stack (64 KiB)
-#define KERNEL_STACK_SIZE 0x10000
-static uint8_t s_kernel_stack[KERNEL_STACK_SIZE] __attribute__((aligned(16)));
+// Assembly entry stack top symbol defined in sys/entry.S
+extern uint8_t s_kernel_stack_top[];
 
-void kernel_main(void);
-static void kmain(void) __attribute__((noinline));
+void kmain(void);
 
-void kernel_main(void)
+void kmain(void)
 {
-    // Switch to dedicated permanent kernel stack (s_kernel_stack)
-    asm volatile("mov %0, %%rsp\n"
-                 "xor %%rbp, %%rbp\n"
-                 :
-                 : "r"((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE)
-                 : "memory");
+    if (serial_init(SERIAL_COM1) == 0)
+    {
+        kprintf("\r\n========================================\r\n");
+        kprintf("   CrusaderOS Kernel (x86_64)\r\n");
+        kprintf("========================================\r\n");
+        kprintf("[ OK ] Serial COM1 initialized (115200 8N1)\r\n");
+    }
 
-    kmain();
-
-    hcf();
-}
-
-static void kmain(void)
-{
     if (LIMINE_BASE_REVISION_SUPPORTED == false)
     {
+        kprintf("[ FATAL ] Limine base revision unsupported!\r\n");
         hcf();
     }
 
-    // Assure that we have a framebuffer and critical boot responses
-    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1 || hhdm_request.response == NULL ||
-        mm_request.response == NULL || kernel_addr_request.response == NULL)
+    if (hhdm_request.response == NULL || mm_request.response == NULL || kernel_addr_request.response == NULL)
     {
+        kprintf("[ FATAL ] Critical Limine boot responses missing!\r\n");
+        hcf();
+    }
+    kprintf("[ OK ] Limine HHDM and Memmap verified\r\n");
+
+    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1)
+    {
+        kprintf("[ FATAL ] No Limine framebuffer available!\r\n");
         hcf();
     }
 
     struct limine_framebuffer *framebuffer = fb_request.response->framebuffers[0];
+    kprintf("[ INFO ] Framebuffer: %ux%u (%u bpp, pitch %u, addr %p)\r\n", (unsigned int)framebuffer->width,
+            (unsigned int)framebuffer->height, (unsigned int)framebuffer->bpp, (unsigned int)framebuffer->pitch,
+            framebuffer->address);
 
-    // Initializations
-
-    // Serial communications (non-fatal if absent on real hardware)
-    if (serial_init(SERIAL_COM1) == 0)
-    {
-        serial_write(SERIAL_COM1, "[ OK ] Serial Initialization\r\n");
-
-        char strBuffer[100] = "";
-        serial_write(SERIAL_COM1, "[ INFO ] Screen resolution : ");
-        serial_write(SERIAL_COM1, itoa((int)framebuffer->width, strBuffer, 10));
-        serial_write(SERIAL_COM1, "x");
-        serial_write(SERIAL_COM1, itoa((int)framebuffer->height, strBuffer, 10));
-        serial_write(SERIAL_COM1, "\r\n");
-
-        serial_write(SERIAL_COM1, "[ OK ] Limine HHDM and Memmap verified\r\n");
-    }
-
-    // GDT - Global Descriptor Table
+    // GDT (Global Descriptor Table) & TSS Init (Task State Segment)
     gdt_init();
-    tss_set_rsp0((uint64_t)s_kernel_stack + KERNEL_STACK_SIZE);
+    tss_set_rsp0((uint64_t)s_kernel_stack_top);
+    kprintf("[ OK ] GDT and TSS configured (RSP0 set to %p)\r\n", s_kernel_stack_top);
 
-    // IDT - Interrupt Descriptor Table
+    // IDT (Interrupt Descriptor Table)
     idt_init();
 
-    // PMM - Physical Memory Manager
-
-    // VMM - Virtual Memory Manager
-
-    // Paging
-
+    // Page Attribute Table (PAT) write-combining configuration
     if (pat_enable_write_combining())
     {
-        serial_write(SERIAL_COM1, "[ OK ] PAT Write-Combining configured (PA2=WC)\r\n");
+        kprintf("[ OK ] PAT Write-Combining configured in MSR (PA2=WC)\r\n");
     }
     else
     {
-        serial_write(SERIAL_COM1, "[ WARN ] CPU does not support PAT\r\n");
+        kprintf("[ WARN ] CPU does not support PAT\r\n");
     }
 
+    // Framebuffer Double Buffering
     if (framebuffer_init_backbuffer(framebuffer))
     {
-        serial_write(SERIAL_COM1, "[ OK ] Framebuffer backbuffer initialized (double buffering active)\r\n");
+        kprintf("[ OK ] Framebuffer backbuffer initialized (double buffering active)\r\n");
     }
     else
     {
-        serial_write(SERIAL_COM1, "[ WARN ] Resolution exceeds backbuffer capacity, falling back to direct VRAM\r\n");
+        kprintf("[ WARN ] Resolution exceeds backbuffer capacity, falling back to direct VRAM\r\n");
     }
 
+    // Test graphical render
     framebuffer_clear(framebuffer, RGB_BLACK);
-
     framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
     framebuffer_drawRect(framebuffer, (Rect){200, 50, 100, 100}, RGB_RED);
     framebuffer_drawLine(framebuffer, (Vec2){50, 200}, (Vec2){300, 250}, RGB_WHITE);
-
     framebuffer_swap(framebuffer);
 
-    hcf(); // Done
+    kprintf("[ OK ] Graphical test pattern drawn successfully.\r\n");
+    kprintf("[ OK ] CrusaderOS Kernel initialization complete. System idle.\r\n");
+
+    for (;;)
+    {
+        hlt();
+    }
 }

@@ -112,6 +112,10 @@ static GDTEntry g_GDT[8] = {
 
 static TSS g_TSS;
 
+// Dedicated IST stack for Double Fault (#DF) to prevent Triple Fault on kernel stack overflow
+#define DF_STACK_SIZE 0x2000 // 8 KiB
+static uint8_t s_df_stack[DF_STACK_SIZE] __attribute__((aligned(16)));
+
 static void gdt_set_tss(int index, uintptr_t base, uint32_t limit)
 {
     g_GDT[index].limitLow = (uint16_t)(limit & 0xFFFF);
@@ -131,11 +135,44 @@ void tss_set_rsp0(uint64_t rsp0)
     g_TSS.rsp0 = rsp0;
 }
 
+void tss_set_ist(int index, uint64_t ist)
+{
+    switch (index)
+    {
+    case 1:
+        g_TSS.ist1 = ist;
+        break;
+    case 2:
+        g_TSS.ist2 = ist;
+        break;
+    case 3:
+        g_TSS.ist3 = ist;
+        break;
+    case 4:
+        g_TSS.ist4 = ist;
+        break;
+    case 5:
+        g_TSS.ist5 = ist;
+        break;
+    case 6:
+        g_TSS.ist6 = ist;
+        break;
+    case 7:
+        g_TSS.ist7 = ist;
+        break;
+    default:
+        break;
+    }
+}
+
 void gdt_init(void)
 {
     // Initialisation du TSS
     memset(&g_TSS, 0, sizeof(g_TSS));
     g_TSS.iopb_offset = sizeof(g_TSS);
+
+    // Initialisation de la pile de secours IST1 pour #DF (Double Fault)
+    tss_set_ist(1, (uint64_t)s_df_stack + DF_STACK_SIZE);
 
     // Configuration de l'entrée TSS dans la GDT (sélecteur 0x30, index 6)
     gdt_set_tss(6, (uintptr_t)&g_TSS, sizeof(g_TSS) - 1);
