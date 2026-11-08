@@ -188,6 +188,11 @@ int vsnprintf(char *buffer, size_t size, const char *format, va_list args)
                 format++;
             }
         }
+        else if (*format == 'z')
+        {
+            is_long = true; // size_t is 64-bit on x86_64
+            format++;
+        }
 
         switch (*format)
         {

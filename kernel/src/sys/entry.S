@@ -13,6 +13,9 @@ s_kernel_stack_top:
 .extern kmain
 
 kernel_main:
+    /* Ensure Direction Flag is clear (forward) for System V ABI compliance */
+    cld
+
     /* Set up clean, permanent 16-byte aligned kernel stack */
     lea s_kernel_stack_top(%rip), %rsp
     xor %rbp, %rbp

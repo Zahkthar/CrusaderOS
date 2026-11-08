@@ -2,49 +2,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <limine.h>
-
 #include "drivers/serial.h"
 #include "graphics/colors.h"
 #include "graphics/framebuffer.h"
 #include "klibc/stdio.h"
 #include "klibc/stdlib.h"
+#include "memory/pmm.h"
+#include "sys/boot_info.h"
 #include "sys/cpu.h"
 #include "sys/gdt.h"
 #include "sys/idt.h"
-
-// Limine requests
-__attribute__((used)) static volatile LIMINE_BASE_REVISION(1);
-
-__attribute__((used)) static volatile struct limine_framebuffer_request fb_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST,
-    .revision = 0
-};
-
-__attribute__((used)) static volatile struct limine_hhdm_request hhdm_request = {
-    .id = LIMINE_HHDM_REQUEST,
-    .revision = 0
-};
-
-__attribute__((used)) static volatile struct limine_memmap_request mm_request = {
-    .id = LIMINE_MEMMAP_REQUEST,
-    .revision = 0
-};
-
-__attribute__((used)) static volatile struct limine_rsdp_request rsdp_request = {
-    .id = LIMINE_RSDP_REQUEST,
-    .revision = 0
-};
-
-__attribute__((used)) static volatile struct limine_kernel_address_request kernel_addr_request = {
-    .id = LIMINE_KERNEL_ADDRESS_REQUEST,
-    .revision = 0
-};
-
-__attribute__((used)) static volatile struct limine_module_request module_request = {
-    .id = LIMINE_MODULE_REQUEST,
-    .revision = 0
-};
 
 // Assembly entry stack top symbol defined in sys/entry.S
 extern uint8_t s_kernel_stack_top[];
@@ -61,26 +28,16 @@ void kmain(void)
         kprintf("[ OK ] Serial COM1 initialized (115200 8N1)\r\n");
     }
 
-    if (LIMINE_BASE_REVISION_SUPPORTED == false)
+    if (!boot_info_init())
     {
-        kprintf("[ FATAL ] Limine base revision unsupported!\r\n");
+        kprintf("[ FATAL ] Critical Limine boot info missing or base revision unsupported!\r\n");
         hcf();
     }
+    kprintf("[ OK ] BootInfo retrieved from Limine\r\n");
 
-    if (hhdm_request.response == NULL || mm_request.response == NULL || kernel_addr_request.response == NULL)
-    {
-        kprintf("[ FATAL ] Critical Limine boot responses missing!\r\n");
-        hcf();
-    }
-    kprintf("[ OK ] Limine HHDM and Memmap verified\r\n");
+    const BootInfo *boot_info = boot_info_get();
+    struct limine_framebuffer *framebuffer = boot_info->framebuffer;
 
-    if (fb_request.response == NULL || fb_request.response->framebuffer_count < 1)
-    {
-        kprintf("[ FATAL ] No Limine framebuffer available!\r\n");
-        hcf();
-    }
-
-    struct limine_framebuffer *framebuffer = fb_request.response->framebuffers[0];
     kprintf("[ INFO ] Framebuffer: %ux%u (%u bpp, pitch %u, addr %p)\r\n", (unsigned int)framebuffer->width,
             (unsigned int)framebuffer->height, (unsigned int)framebuffer->bpp, (unsigned int)framebuffer->pitch,
             framebuffer->address);
@@ -92,6 +49,20 @@ void kmain(void)
 
     // IDT (Interrupt Descriptor Table)
     idt_init();
+
+    // PMM (Physical Memory Manager)
+    pmm_init(boot_info);
+
+    // Quick verification test for PMM
+    void *test_page1 = pmm_alloc_page();
+    void *test_page2 = pmm_alloc_page();
+    kprintf("[ TEST ] PMM allocated pages: %p and %p\r\n", test_page1, test_page2);
+    pmm_free_page(test_page2);
+    void *test_page3 = pmm_alloc_page();
+    kprintf("[ TEST ] PMM reallocated freed page: %p (matches %p)\r\n", test_page3, test_page2);
+    pmm_free_page(test_page1);
+    pmm_free_page(test_page3);
+    kprintf("[ OK ] PMM allocation/free cycle verified\r\n");
 
     // Page Attribute Table (PAT) write-combining configuration
     if (pat_enable_write_combining())
