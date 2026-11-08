@@ -8,6 +8,11 @@
 static void format_unsigned(char **buf, size_t *remaining, size_t *written, uint64_t val, int base, bool uppercase,
                             int width, bool pad_zero)
 {
+    if (buf == NULL || remaining == NULL || written == NULL || base < 2 || base > 16)
+    {
+        return;
+    }
+
     char tmp[65];
     int pos = 0;
     const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
@@ -349,11 +354,18 @@ int snprintf(char *buffer, size_t size, const char *format, ...)
     return ret;
 }
 
+#define SPRINTF_MAX_SAFE_SIZE 4096
+
 int sprintf(char *buffer, const char *format, ...)
 {
+    if (buffer == NULL || format == NULL)
+    {
+        return -1;
+    }
+
     va_list args;
     va_start(args, format);
-    int ret = vsnprintf(buffer, (size_t)-1, format, args);
+    int ret = vsnprintf(buffer, SPRINTF_MAX_SAFE_SIZE, format, args);
     va_end(args);
     return ret;
 }

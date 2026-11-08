@@ -195,6 +195,9 @@ void gdt_init(void)
                  "mov %%ax, %%ds\n"
                  "mov %%ax, %%es\n"
                  "mov %%ax, %%ss\n"
+                 "xor %%ax, %%ax\n"  // 0x00 = sélecteur nul pour FS et GS
+                 "mov %%ax, %%fs\n"
+                 "mov %%ax, %%gs\n"
                  :
                  : "r"(&gdtr)
                  : "rax", "memory");
