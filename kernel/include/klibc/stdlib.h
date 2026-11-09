@@ -6,5 +6,6 @@
 // +-----------------------------+
 
 char *itoa(int value, char *buffer, int base);
+int atoi(const char *str);
 
 #endif // KLIBC_STDLIB_H_INCLUDED

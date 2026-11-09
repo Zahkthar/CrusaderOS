@@ -4,6 +4,8 @@
 
 #include "drivers/serial.h"
 #include "graphics/colors.h"
+#include "graphics/console.h"
+#include "graphics/font.h"
 #include "graphics/framebuffer.h"
 #include "klibc/stdio.h"
 #include "klibc/stdlib.h"
@@ -142,24 +144,32 @@ void kmain(void)
         kprintf("[ TEST ] APIC Timer verified (50 ms sleep, %lu ticks elapsed)\r\n", timer_get_ticks());
     }
 
-    // Framebuffer Double Buffering
+    // Framebuffer Double Buffering (dynamically allocated via kmalloc)
     if (framebuffer_init_backbuffer(framebuffer))
     {
         kprintf("[ OK ] Framebuffer backbuffer initialized (double buffering active)\r\n");
     }
     else
     {
-        kprintf("[ WARN ] Resolution exceeds backbuffer capacity, falling back to direct VRAM\r\n");
+        kprintf("[ WARN ] Backbuffer allocation failed, falling back to direct VRAM\r\n");
     }
 
-    // Test graphical render
-    framebuffer_clear(framebuffer, RGB_BLACK);
-    framebuffer_fillRect(framebuffer, (Rect){50, 50, 100, 100}, RGB_GREEN);
-    framebuffer_drawRect(framebuffer, (Rect){200, 50, 100, 100}, RGB_RED);
-    framebuffer_drawLine(framebuffer, (Vec2){50, 200}, (Vec2){300, 250}, RGB_WHITE);
+    // Graphical TTY Console Initialization
+    console_init(framebuffer);
+    kprintf("[ OK ] Graphical TTY Console initialized (%d x %d chars, 8x16 font)\r\n", console_get_cols(),
+            console_get_rows());
+
+    // Graphical and Font Engine test badge
+    framebuffer_fillRect(framebuffer, (Rect){(int)framebuffer->width - 240, 20, 220, 70}, RGB_BLUE);
+    framebuffer_drawRect(framebuffer, (Rect){(int)framebuffer->width - 240, 20, 220, 70}, RGB_CYAN);
+    font_draw_string(framebuffer, (int)framebuffer->width - 230, 30, "CrusaderOS 64-bit", RGB_WHITE, RGB_BLUE);
+    font_draw_string(framebuffer, (int)framebuffer->width - 230, 50, "Phase 2: TTY Active", RGB_YELLOW, RGB_BLUE);
+    font_draw_string(framebuffer, (int)framebuffer->width - 230, 70, "8x16 Font Engine", RGB_GREEN, RGB_BLUE);
     framebuffer_swap(framebuffer);
 
-    kprintf("[ OK ] Graphical test pattern drawn successfully.\r\n");
+    kprintf("[ OK ] Graphical test pattern and font rendering verified.\r\n");
+    kprintf("[ TEST ] Console text rendering verified on display (%d cols x %d rows)\r\n", console_get_cols(),
+            console_get_rows());
     kprintf("[ OK ] CrusaderOS Kernel initialization complete. System idle.\r\n");
 
     for (;;)

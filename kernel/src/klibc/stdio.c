@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #include "drivers/serial.h"
+#include "graphics/console.h"
 #include "klibc/string.h"
 
 static void format_unsigned(char **buf, size_t *remaining, size_t *written, uint64_t val, int base, bool uppercase,
@@ -387,8 +388,13 @@ void kprintf(const char *format, ...)
     char buffer[1024];
     va_list args;
     va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
+    int length = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
     serial_write(SERIAL_COM1, buffer);
+
+    if (console_is_initialized() && length > 0)
+    {
+        console_write(buffer, (size_t)length);
+    }
 }

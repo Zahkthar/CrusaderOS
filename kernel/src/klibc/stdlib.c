@@ -72,3 +72,36 @@ char *itoa(int value, char *buffer, int base)
 
     return buffer;
 }
+
+int atoi(const char *str)
+{
+    if (str == NULL)
+    {
+        return 0;
+    }
+
+    while (*str == ' ' || (*str >= '\t' && *str <= '\r'))
+    {
+        str++;
+    }
+
+    bool is_negative = false;
+    if (*str == '-')
+    {
+        is_negative = true;
+        str++;
+    }
+    else if (*str == '+')
+    {
+        str++;
+    }
+
+    int result = 0;
+    while (*str >= '0' && *str <= '9')
+    {
+        result = result * 10 + (*str - '0');
+        str++;
+    }
+
+    return is_negative ? -result : result;
+}

@@ -3,34 +3,92 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "graphics/font.h"
 #include "klibc/math.h"
 #include "klibc/string.h"
+#include "memory/heap.h"
 
 // +-----------------------------------+
 // | DOUBLE BUFFERING (BACKBUFFER)     |
 // +-----------------------------------+
 
-#define FRAMEBUFFER_MAX_WIDTH  1920
-#define FRAMEBUFFER_MAX_HEIGHT 1080
-#define FRAMEBUFFER_MAX_PIXELS (FRAMEBUFFER_MAX_WIDTH * FRAMEBUFFER_MAX_HEIGHT)
-
-static uint32_t s_backbuffer[FRAMEBUFFER_MAX_PIXELS] __attribute__((aligned(64)));
+static uint32_t *s_backbuffer = NULL;
+static size_t s_backbuffer_size = 0;
 static bool s_backbuffer_enabled = false;
+static int s_dirty_min_y = 0;
+static int s_dirty_max_y = -1;
+
+void framebuffer_mark_dirty(int min_y, int max_y)
+{
+    if (min_y < 0)
+    {
+        min_y = 0;
+    }
+    if (max_y < min_y)
+    {
+        return;
+    }
+
+    if (s_dirty_max_y < s_dirty_min_y)
+    {
+        s_dirty_min_y = min_y;
+        s_dirty_max_y = max_y;
+    }
+    else
+    {
+        if (min_y < s_dirty_min_y)
+        {
+            s_dirty_min_y = min_y;
+        }
+        if (max_y > s_dirty_max_y)
+        {
+            s_dirty_max_y = max_y;
+        }
+    }
+}
 
 bool framebuffer_init_backbuffer(struct limine_framebuffer *framebuffer)
 {
-    if (framebuffer == NULL || (framebuffer->width * framebuffer->height) > FRAMEBUFFER_MAX_PIXELS)
+    if (framebuffer == NULL || framebuffer->width == 0 || framebuffer->height == 0)
     {
         s_backbuffer_enabled = false;
         return false;
     }
+
+    size_t pixel_count = framebuffer->width * framebuffer->height;
+    size_t required_bytes = pixel_count * sizeof(uint32_t);
+
+    if (s_backbuffer != NULL)
+    {
+        kfree(s_backbuffer);
+        s_backbuffer = NULL;
+        s_backbuffer_size = 0;
+        s_backbuffer_enabled = false;
+    }
+
+    s_backbuffer = (uint32_t *)kmalloc(required_bytes);
+    if (s_backbuffer == NULL)
+    {
+        s_backbuffer_enabled = false;
+        return false;
+    }
+
+    memset(s_backbuffer, 0, required_bytes);
+    s_backbuffer_size = required_bytes;
     s_backbuffer_enabled = true;
+    s_dirty_min_y = 0;
+    s_dirty_max_y = (int)framebuffer->height;
     return true;
 }
 
 bool framebuffer_is_backbuffer_enabled(void)
 {
     return s_backbuffer_enabled;
+}
+
+uint32_t *framebuffer_get_backbuffer(void)
+{
+    return s_backbuffer;
 }
 
 void framebuffer_swap(struct limine_framebuffer *framebuffer)
@@ -40,35 +98,58 @@ void framebuffer_swap(struct limine_framebuffer *framebuffer)
         return;
     }
 
+    if (s_dirty_max_y < s_dirty_min_y)
+    {
+        return;
+    }
+
+    int start_y = s_dirty_min_y < 0 ? 0 : s_dirty_min_y;
+    int end_y = s_dirty_max_y > (int)framebuffer->height ? (int)framebuffer->height : s_dirty_max_y;
+
+    if (start_y >= end_y)
+    {
+        s_dirty_min_y = (int)framebuffer->height;
+        s_dirty_max_y = -1;
+        return;
+    }
+
     size_t bytes_per_pixel = (size_t)(framebuffer->bpp / 8);
     if (bytes_per_pixel == 0)
     {
         bytes_per_pixel = 4;
     }
 
-    // 32 bpp fast path: contiguous full buffer
-    if (bytes_per_pixel == 4 && framebuffer->pitch == framebuffer->width * 4)
+    volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
+
+    // Fast path: full buffer blit if all lines are dirty and pitch is packed
+    if (start_y == 0 && (size_t)end_y == framebuffer->height && bytes_per_pixel == 4 &&
+        framebuffer->pitch == framebuffer->width * 4)
     {
         memcpy(framebuffer->address, s_backbuffer, framebuffer->width * framebuffer->height * 4);
+    }
+    // Slices of 32 bpp rows with packed pitch
+    else if (bytes_per_pixel == 4 && framebuffer->pitch == framebuffer->width * 4)
+    {
+        size_t offset = (size_t)start_y * framebuffer->width * 4;
+        size_t count = (size_t)(end_y - start_y) * framebuffer->width * 4;
+        memcpy((void *)(vram + offset), (const void *)((uint8_t *)s_backbuffer + offset), count);
     }
     // 32 bpp row by row (pitch > width * 4)
     else if (bytes_per_pixel == 4)
     {
-        volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
-        for (size_t y = 0; y < framebuffer->height; y++)
+        for (int y = start_y; y < end_y; y++)
         {
-            memcpy((void *)(vram + y * framebuffer->pitch), &s_backbuffer[y * framebuffer->width],
+            memcpy((void *)(vram + (size_t)y * framebuffer->pitch), &s_backbuffer[(size_t)y * framebuffer->width],
                    framebuffer->width * 4);
         }
     }
     // 16 bpp: convert each 32-bit backbuffer pixel to 16-bit
     else if (bytes_per_pixel == 2)
     {
-        volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
-        for (size_t y = 0; y < framebuffer->height; y++)
+        for (int y = start_y; y < end_y; y++)
         {
-            volatile uint16_t *dst_row = (volatile uint16_t *)(vram + y * framebuffer->pitch);
-            const uint32_t *src_row = &s_backbuffer[y * framebuffer->width];
+            volatile uint16_t *dst_row = (volatile uint16_t *)(vram + (size_t)y * framebuffer->pitch);
+            const uint32_t *src_row = &s_backbuffer[(size_t)y * framebuffer->width];
             for (size_t x = 0; x < framebuffer->width; x++)
             {
                 dst_row[x] = (uint16_t)src_row[x];
@@ -78,11 +159,10 @@ void framebuffer_swap(struct limine_framebuffer *framebuffer)
     // 24 bpp: write 3 bytes per pixel
     else if (bytes_per_pixel == 3)
     {
-        volatile uint8_t *vram = (volatile uint8_t *)framebuffer->address;
-        for (size_t y = 0; y < framebuffer->height; y++)
+        for (int y = start_y; y < end_y; y++)
         {
-            volatile uint8_t *dst_row = vram + y * framebuffer->pitch;
-            const uint32_t *src_row = &s_backbuffer[y * framebuffer->width];
+            volatile uint8_t *dst_row = vram + (size_t)y * framebuffer->pitch;
+            const uint32_t *src_row = &s_backbuffer[(size_t)y * framebuffer->width];
             for (size_t x = 0; x < framebuffer->width; x++)
             {
                 uint32_t pixel = src_row[x];
@@ -92,13 +172,16 @@ void framebuffer_swap(struct limine_framebuffer *framebuffer)
             }
         }
     }
+
+    s_dirty_min_y = (int)framebuffer->height;
+    s_dirty_max_y = -1;
 }
 
 // +-----------------------------------+
 // | COLOR FORMATTING HELPER           |
 // +-----------------------------------+
 
-static uint32_t framebuffer_format_color(const struct limine_framebuffer *framebuffer, uint32_t rgbColor)
+uint32_t framebuffer_format_color(const struct limine_framebuffer *framebuffer, uint32_t rgbColor)
 {
     // If mask sizes are not provided by the bootloader, fall back to direct 24/32-bit RGB
     if (framebuffer->red_mask_size == 0 && framebuffer->green_mask_size == 0 && framebuffer->blue_mask_size == 0)
@@ -127,6 +210,7 @@ static uint32_t framebuffer_format_color(const struct limine_framebuffer *frameb
 
 static inline void put_pixel_raw(struct limine_framebuffer *framebuffer, int x, int y, uint32_t pixel)
 {
+    framebuffer_mark_dirty(y, y + 1);
     if (s_backbuffer_enabled)
     {
         s_backbuffer[(size_t)y * framebuffer->width + (size_t)x] = pixel;
@@ -391,6 +475,7 @@ void framebuffer_fillRect(struct limine_framebuffer *framebuffer, Rect rect, uin
     }
 
     uint32_t pixel = framebuffer_format_color(framebuffer, rgbColor);
+    framebuffer_mark_dirty(y1, y2);
 
     if (s_backbuffer_enabled)
     {
@@ -430,4 +515,70 @@ void framebuffer_fillRect(struct limine_framebuffer *framebuffer, Rect rect, uin
             }
         }
     }
+}
+
+void framebuffer_scroll_up(struct limine_framebuffer *framebuffer, int pixels, uint32_t fill_color)
+{
+    if (framebuffer == NULL || pixels <= 0 || (uint64_t)pixels >= framebuffer->height)
+    {
+        return;
+    }
+
+    uint32_t pixel = framebuffer_format_color(framebuffer, fill_color);
+    framebuffer_mark_dirty(0, (int)framebuffer->height);
+
+    if (s_backbuffer_enabled && s_backbuffer != NULL)
+    {
+        size_t total_pixels = framebuffer->width * framebuffer->height;
+        size_t move_pixels = framebuffer->width * (framebuffer->height - (size_t)pixels);
+        size_t offset_pixels = framebuffer->width * (size_t)pixels;
+
+        memmove(s_backbuffer, s_backbuffer + offset_pixels, move_pixels * sizeof(uint32_t));
+
+        for (size_t i = move_pixels; i < total_pixels; i++)
+        {
+            s_backbuffer[i] = pixel;
+        }
+    }
+    else
+    {
+        size_t bytes_per_pixel = (size_t)(framebuffer->bpp / 8);
+        if (bytes_per_pixel == 0)
+        {
+            bytes_per_pixel = 4;
+        }
+
+        volatile uint8_t *fb = (volatile uint8_t *)framebuffer->address;
+        size_t move_bytes = (framebuffer->height - (size_t)pixels) * framebuffer->pitch;
+        size_t offset_bytes = (size_t)pixels * framebuffer->pitch;
+
+        memmove((void *)fb, (const void *)(fb + offset_bytes), move_bytes);
+
+        for (size_t y = framebuffer->height - (size_t)pixels; y < framebuffer->height; y++)
+        {
+            volatile uint8_t *row = fb + y * framebuffer->pitch;
+            for (size_t x = 0; x < framebuffer->width; x++)
+            {
+                if (bytes_per_pixel == 4)
+                {
+                    *(volatile uint32_t *)(row + x * 4) = pixel;
+                }
+                else
+                {
+                    put_pixel_raw(framebuffer, (int)x, (int)y, pixel);
+                }
+            }
+        }
+    }
+}
+
+void framebuffer_drawChar(struct limine_framebuffer *framebuffer, int x, int y, char c, uint32_t fg, uint32_t bg)
+{
+    font_draw_char(framebuffer, x, y, c, fg, bg);
+}
+
+void framebuffer_drawString(struct limine_framebuffer *framebuffer, int x, int y, const char *str, uint32_t fg,
+                            uint32_t bg)
+{
+    font_draw_string(framebuffer, x, y, str, fg, bg);
 }
