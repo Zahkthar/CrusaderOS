@@ -83,6 +83,19 @@ static void setLineProtocol(uint16_t comPort, uint16_t divisorValue, uint8_t cha
     outb(SERIAL_LINE_CONTROL_REGISTER(comPort), lineControlProtocol);
 }
 
+static inline bool serial_wait_tx_empty(uint16_t comPort)
+{
+    uint32_t timeout = SERIAL_TIMEOUT;
+    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
+    {
+        if (--timeout == 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void serial_putchar(uint16_t comPort, char character)
 {
     if (!serial_is_available(comPort))
@@ -95,24 +108,16 @@ void serial_putchar(uint16_t comPort, char character)
     // If character is '\n' and wasn't preceded by '\r', emit '\r' first (CRLF)
     if (character == '\n' && (idx < 0 || s_last_char[idx] != '\r'))
     {
-        uint32_t cr_timeout = SERIAL_TIMEOUT;
-        while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
+        if (!serial_wait_tx_empty(comPort))
         {
-            if (--cr_timeout == 0)
-            {
-                return;
-            }
+            return;
         }
         outb(SERIAL_DATA_REGISTER(comPort), '\r');
     }
 
-    uint32_t timeout = SERIAL_TIMEOUT;
-    while ((serial_getLineStatus(comPort) & SERIAL_LINE_STATUS_TRANSMITTER_HOLDING_REGISTER_EMPTY) == 0)
+    if (!serial_wait_tx_empty(comPort))
     {
-        if (--timeout == 0)
-        {
-            return;
-        }
+        return;
     }
     outb(SERIAL_DATA_REGISTER(comPort), (uint8_t)character);
 

@@ -159,6 +159,18 @@ static inline void io_wait(void)
 // | INTERRUPTS AND PAUSE    |
 // +-------------------------+
 
+static inline uint64_t read_rflags(void)
+{
+    uint64_t rflags;
+    asm volatile("pushfq; pop %0" : "=r"(rflags) : : "memory");
+    return rflags;
+}
+
+static inline void write_rflags(uint64_t rflags)
+{
+    asm volatile("push %0; popfq" : : "r"(rflags) : "memory", "cc");
+}
+
 static inline void cli(void)
 {
     asm volatile("cli" ::: "memory");
@@ -183,4 +195,4 @@ static inline void hcf(void)
     }
 }
 
-#endif          // SYS_CPU_H_INCLUDED
+#endif // SYS_CPU_H_INCLUDED

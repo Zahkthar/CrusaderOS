@@ -6,6 +6,7 @@
 #include "klibc/string.h"
 #include "memory/pmm.h"
 #include "sys/cpu.h"
+#include "sys/spinlock.h"
 
 // +----------------+
 // | LINKER SYMBOLS |
@@ -21,6 +22,8 @@ extern uint8_t __bss_end[];
 // +--------------------+
 // | INTERNAL VARIABLES |
 // +--------------------+
+
+static Spinlock s_vmm_lock = SPINLOCK_INIT;
 
 #define MAX_PAGE_DIRECTORIES 16
 
@@ -109,88 +112,85 @@ PageDirectory *vmm_get_kernel_directory(void)
     return &s_kernel_dir;
 }
 
-bool vmm_map_page(PageDirectory *dir, uint64_t vaddr, uint64_t paddr, uint64_t flags)
+static uint64_t *vmm_get_pte(PageDirectory *dir, uint64_t vaddr, bool allocate, uint64_t flags)
 {
     if (dir == NULL || dir->entries == NULL)
     {
-        return false;
+        return NULL;
     }
-
-    vaddr &= ~0xFFFULL;
-    paddr &= ~0xFFFULL;
 
     size_t pml4_idx = VMM_PML4_INDEX(vaddr);
     size_t pdpt_idx = VMM_PDPT_INDEX(vaddr);
     size_t pd_idx = VMM_PD_INDEX(vaddr);
     size_t pt_idx = VMM_PT_INDEX(vaddr);
 
-    uint64_t *pdpt = vmm_get_next_level(dir->entries, pml4_idx, true, flags);
+    uint64_t *pdpt = vmm_get_next_level(dir->entries, pml4_idx, allocate, flags);
     if (pdpt == NULL)
     {
-        return false;
+        return NULL;
     }
 
-    uint64_t *pd = vmm_get_next_level(pdpt, pdpt_idx, true, flags);
+    uint64_t *pd = vmm_get_next_level(pdpt, pdpt_idx, allocate, flags);
     if (pd == NULL)
     {
-        return false;
+        return NULL;
     }
 
-    uint64_t *pt = vmm_get_next_level(pd, pd_idx, true, flags);
+    uint64_t *pt = vmm_get_next_level(pd, pd_idx, allocate, flags);
     if (pt == NULL)
     {
+        return NULL;
+    }
+
+    return &pt[pt_idx];
+}
+
+bool vmm_map_page(PageDirectory *dir, uint64_t vaddr, uint64_t paddr, uint64_t flags)
+{
+    vaddr &= ~0xFFFULL;
+    paddr &= ~0xFFFULL;
+
+    uint64_t irq_flags = spinlock_acquire_irqsave(&s_vmm_lock);
+
+    uint64_t *pte = vmm_get_pte(dir, vaddr, true, flags);
+    if (pte == NULL)
+    {
+        spinlock_release_irqrestore(&s_vmm_lock, irq_flags);
         return false;
     }
 
-    pt[pt_idx] = paddr | flags;
+    *pte = paddr | flags;
 
     if (dir->cr3 == read_cr3())
     {
         vmm_invlpg(vaddr);
     }
 
+    spinlock_release_irqrestore(&s_vmm_lock, irq_flags);
     return true;
 }
 
 bool vmm_unmap_page(PageDirectory *dir, uint64_t vaddr)
 {
-    if (dir == NULL || dir->entries == NULL)
-    {
-        return false;
-    }
-
     vaddr &= ~0xFFFULL;
 
-    size_t pml4_idx = VMM_PML4_INDEX(vaddr);
-    size_t pdpt_idx = VMM_PDPT_INDEX(vaddr);
-    size_t pd_idx = VMM_PD_INDEX(vaddr);
-    size_t pt_idx = VMM_PT_INDEX(vaddr);
+    uint64_t irq_flags = spinlock_acquire_irqsave(&s_vmm_lock);
 
-    uint64_t *pdpt = vmm_get_next_level(dir->entries, pml4_idx, false, 0);
-    if (pdpt == NULL)
+    uint64_t *pte = vmm_get_pte(dir, vaddr, false, 0);
+    if (pte == NULL)
     {
+        spinlock_release_irqrestore(&s_vmm_lock, irq_flags);
         return false;
     }
 
-    uint64_t *pd = vmm_get_next_level(pdpt, pdpt_idx, false, 0);
-    if (pd == NULL)
-    {
-        return false;
-    }
-
-    uint64_t *pt = vmm_get_next_level(pd, pd_idx, false, 0);
-    if (pt == NULL)
-    {
-        return false;
-    }
-
-    pt[pt_idx] = 0;
+    *pte = 0;
 
     if (dir->cr3 == read_cr3())
     {
         vmm_invlpg(vaddr);
     }
 
+    spinlock_release_irqrestore(&s_vmm_lock, irq_flags);
     return true;
 }
 
@@ -220,40 +220,18 @@ bool vmm_unmap_pages(PageDirectory *dir, uint64_t vaddr, size_t count)
 
 uint64_t vmm_virt_to_phys(PageDirectory *dir, uint64_t vaddr)
 {
-    if (dir == NULL || dir->entries == NULL)
+    uint64_t irq_flags = spinlock_acquire_irqsave(&s_vmm_lock);
+
+    uint64_t *pte = vmm_get_pte(dir, vaddr, false, 0);
+    if (pte == NULL || !(*pte & PTE_PRESENT))
     {
+        spinlock_release_irqrestore(&s_vmm_lock, irq_flags);
         return 0;
     }
 
-    size_t pml4_idx = VMM_PML4_INDEX(vaddr);
-    size_t pdpt_idx = VMM_PDPT_INDEX(vaddr);
-    size_t pd_idx = VMM_PD_INDEX(vaddr);
-    size_t pt_idx = VMM_PT_INDEX(vaddr);
-
-    uint64_t *pdpt = vmm_get_next_level(dir->entries, pml4_idx, false, 0);
-    if (pdpt == NULL)
-    {
-        return 0;
-    }
-
-    uint64_t *pd = vmm_get_next_level(pdpt, pdpt_idx, false, 0);
-    if (pd == NULL)
-    {
-        return 0;
-    }
-
-    uint64_t *pt = vmm_get_next_level(pd, pd_idx, false, 0);
-    if (pt == NULL)
-    {
-        return 0;
-    }
-
-    if (!(pt[pt_idx] & PTE_PRESENT))
-    {
-        return 0;
-    }
-
-    return (pt[pt_idx] & PTE_ADDR_MASK) | VMM_PAGE_OFFSET(vaddr);
+    uint64_t paddr = (*pte & PTE_ADDR_MASK) | VMM_PAGE_OFFSET(vaddr);
+    spinlock_release_irqrestore(&s_vmm_lock, irq_flags);
+    return paddr;
 }
 
 PageDirectory *vmm_create_directory(void)

@@ -193,6 +193,13 @@ uint32_t framebuffer_format_color(const struct limine_framebuffer *framebuffer, 
     uint32_t g = (rgbColor >> 8) & 0xFF;
     uint32_t b = rgbColor & 0xFF;
 
+    // Fast-path: standard 8-bit channels (RGB/BGR)
+    if (framebuffer->red_mask_size == 8 && framebuffer->green_mask_size == 8 && framebuffer->blue_mask_size == 8)
+    {
+        return (r << framebuffer->red_mask_shift) | (g << framebuffer->green_mask_shift) |
+               (b << framebuffer->blue_mask_shift);
+    }
+
     uint32_t pixel = 0;
 
     pixel |= (framebuffer->red_mask_size >= 8)
@@ -421,42 +428,6 @@ void framebuffer_drawLine(struct limine_framebuffer *framebuffer, Vec2 posA, Vec
     }
 }
 
-void framebuffer_drawRect(struct limine_framebuffer *framebuffer, Rect rect, uint32_t rgbColor)
-{
-    if (framebuffer == NULL || framebuffer->address == NULL || rect.w <= 0 || rect.h <= 0)
-    {
-        return;
-    }
-
-    // Rect is off-screen
-    if (rect.x >= (int)framebuffer->width || (rect.x + rect.w) <= 0 || rect.y >= (int)framebuffer->height ||
-        (rect.y + rect.h) <= 0)
-    {
-        return;
-    }
-
-    // UP
-    framebuffer_drawLine(framebuffer, (Vec2){rect.x, rect.y}, (Vec2){rect.x + rect.w - 1, rect.y}, rgbColor);
-    if (rect.h > 1)
-    {
-        // DOWN
-        framebuffer_drawLine(framebuffer, (Vec2){rect.x, rect.y + rect.h - 1},
-                             (Vec2){rect.x + rect.w - 1, rect.y + rect.h - 1}, rgbColor);
-    }
-
-    if (rect.h > 2)
-    {
-        // LEFT
-        framebuffer_drawLine(framebuffer, (Vec2){rect.x, rect.y + 1}, (Vec2){rect.x, rect.y + rect.h - 2}, rgbColor);
-        if (rect.w > 1)
-        {
-            // RIGHT
-            framebuffer_drawLine(framebuffer, (Vec2){rect.x + rect.w - 1, rect.y + 1},
-                                 (Vec2){rect.x + rect.w - 1, rect.y + rect.h - 2}, rgbColor);
-        }
-    }
-}
-
 void framebuffer_fillRect(struct limine_framebuffer *framebuffer, Rect rect, uint32_t rgbColor)
 {
     if (framebuffer == NULL || framebuffer->address == NULL || rect.w <= 0 || rect.h <= 0)
@@ -513,6 +484,31 @@ void framebuffer_fillRect(struct limine_framebuffer *framebuffer, Rect rect, uin
                     put_pixel_raw(framebuffer, x, y, pixel);
                 }
             }
+        }
+    }
+}
+
+void framebuffer_drawRect(struct limine_framebuffer *framebuffer, Rect rect, uint32_t rgbColor)
+{
+    if (framebuffer == NULL || rect.w <= 0 || rect.h <= 0)
+    {
+        return;
+    }
+
+    // Top & bottom borders
+    framebuffer_fillRect(framebuffer, (Rect){rect.x, rect.y, rect.w, 1}, rgbColor);
+    if (rect.h > 1)
+    {
+        framebuffer_fillRect(framebuffer, (Rect){rect.x, rect.y + rect.h - 1, rect.w, 1}, rgbColor);
+    }
+
+    // Left & right borders
+    if (rect.h > 2)
+    {
+        framebuffer_fillRect(framebuffer, (Rect){rect.x, rect.y + 1, 1, rect.h - 2}, rgbColor);
+        if (rect.w > 1)
+        {
+            framebuffer_fillRect(framebuffer, (Rect){rect.x + rect.w - 1, rect.y + 1, 1, rect.h - 2}, rgbColor);
         }
     }
 }

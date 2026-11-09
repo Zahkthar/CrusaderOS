@@ -49,25 +49,16 @@ static inline void spinlock_release(Spinlock *lock)
 
 static inline uint64_t spinlock_acquire_irqsave(Spinlock *lock)
 {
-    uint64_t rflags;
-    asm volatile("pushfq; pop %0" : "=r"(rflags) : : "memory");
+    uint64_t rflags = read_rflags();
     cli();
-
-    while (__atomic_test_and_set(&lock->locked, __ATOMIC_ACQUIRE))
-    {
-        while (lock->locked)
-        {
-            asm volatile("pause");
-        }
-    }
-
+    spinlock_acquire(lock);
     return rflags;
 }
 
 static inline void spinlock_release_irqrestore(Spinlock *lock, uint64_t rflags)
 {
-    __atomic_clear(&lock->locked, __ATOMIC_RELEASE);
-    asm volatile("push %0; popfq" : : "r"(rflags) : "memory", "cc");
+    spinlock_release(lock);
+    write_rflags(rflags);
 }
 
 #endif // SYS_SPINLOCK_H_INCLUDED

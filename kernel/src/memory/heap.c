@@ -50,6 +50,20 @@ static inline size_t align_up(size_t value, size_t alignment)
     return (value + alignment - 1) & ~(alignment - 1);
 }
 
+static void heap_rollback_pages(uint64_t start_vaddr, size_t count)
+{
+    for (size_t j = 0; j < count; j++)
+    {
+        uint64_t vaddr = start_vaddr + (j * PAGE_SIZE);
+        uint64_t paddr = vmm_virt_to_phys(vmm_get_kernel_directory(), vaddr);
+        vmm_unmap_page(vmm_get_kernel_directory(), vaddr);
+        if (paddr != 0)
+        {
+            pmm_free_page((void *)(uintptr_t)paddr);
+        }
+    }
+}
+
 static bool heap_expand(size_t min_bytes)
 {
     size_t required_bytes = min_bytes + sizeof(HeapBlock);
@@ -69,16 +83,7 @@ static bool heap_expand(size_t min_bytes)
         if (phys == NULL)
         {
             kprintf("[ ERROR ] Heap: PMM out of memory while expanding heap!\r\n");
-            for (size_t j = 0; j < pages_allocated; j++)
-            {
-                uint64_t vaddr = new_pages_vaddr + (j * PAGE_SIZE);
-                uint64_t paddr = vmm_virt_to_phys(vmm_get_kernel_directory(), vaddr);
-                vmm_unmap_page(vmm_get_kernel_directory(), vaddr);
-                if (paddr != 0)
-                {
-                    pmm_free_page((void *)(uintptr_t)paddr);
-                }
-            }
+            heap_rollback_pages(new_pages_vaddr, pages_allocated);
             s_heap_end = new_pages_vaddr;
             s_heap_total_size -= (pages_allocated * PAGE_SIZE);
             return false;
@@ -89,16 +94,7 @@ static bool heap_expand(size_t min_bytes)
         {
             pmm_free_page(phys);
             kprintf("[ ERROR ] Heap: VMM mapping failed while expanding heap!\r\n");
-            for (size_t j = 0; j < pages_allocated; j++)
-            {
-                uint64_t vaddr = new_pages_vaddr + (j * PAGE_SIZE);
-                uint64_t paddr = vmm_virt_to_phys(vmm_get_kernel_directory(), vaddr);
-                vmm_unmap_page(vmm_get_kernel_directory(), vaddr);
-                if (paddr != 0)
-                {
-                    pmm_free_page((void *)(uintptr_t)paddr);
-                }
-            }
+            heap_rollback_pages(new_pages_vaddr, pages_allocated);
             s_heap_end = new_pages_vaddr;
             s_heap_total_size -= (pages_allocated * PAGE_SIZE);
             return false;

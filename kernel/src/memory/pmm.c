@@ -74,29 +74,21 @@ void pmm_init(const BootInfo *boot_info)
     s_bitmap_size = (s_total_pages + 7) / 8;
     size_t bitmap_page_count = (s_bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    // Trouver une région physique assez pour le bitmap
+    // Trouver une région physique assez grande pour le bitmap (privilégier >= 1 MiB)
     uint64_t bitmap_phys_addr = 0;
     for (size_t i = 0; i < memmap->entry_count; i++)
     {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if (entry->type == LIMINE_MEMMAP_USABLE && entry->base >= 0x100000 &&
-            entry->length >= (bitmap_page_count * PAGE_SIZE))
+        if (entry->type == LIMINE_MEMMAP_USABLE && entry->length >= (bitmap_page_count * PAGE_SIZE))
         {
-            bitmap_phys_addr = entry->base;
-            break;
-        }
-    }
-
-    // Si aucune région >= 1 MiB n'est trouvée, chercher dans n'importe quelle entrée exploitable
-    if (bitmap_phys_addr == 0)
-    {
-        for (size_t i = 0; i < memmap->entry_count; i++)
-        {
-            struct limine_memmap_entry *entry = memmap->entries[i];
-            if (entry->type == LIMINE_MEMMAP_USABLE && entry->length >= (bitmap_page_count * PAGE_SIZE))
+            if (entry->base >= 0x100000)
             {
                 bitmap_phys_addr = entry->base;
                 break;
+            }
+            if (bitmap_phys_addr == 0)
+            {
+                bitmap_phys_addr = entry->base;
             }
         }
     }
@@ -223,6 +215,14 @@ void *pmm_alloc_pages(size_t count)
 
     for (size_t i = 0; i < s_total_pages; i++)
     {
+        // Saut rapide d'octet plein si aucune séquence n'est en cours
+        if (consecutive == 0 && s_bitmap[i / 8] == 0xFF)
+        {
+            size_t remainder = i % 8;
+            i += (7 - remainder);
+            continue;
+        }
+
         if (!bitmap_test(i))
         {
             if (consecutive == 0)
