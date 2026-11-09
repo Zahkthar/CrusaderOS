@@ -11,10 +11,12 @@
 #include "memory/heap.h"
 #include "memory/pmm.h"
 #include "memory/vmm.h"
+#include "sys/apic.h"
 #include "sys/boot_info.h"
 #include "sys/cpu.h"
 #include "sys/gdt.h"
 #include "sys/idt.h"
+#include "sys/pic.h"
 
 // Assembly entry stack top symbol defined in sys/entry.S
 extern uint8_t s_kernel_stack_top[];
@@ -121,6 +123,23 @@ void kmain(void)
         kfree(buf2);
         kprintf("[ OK ] kmalloc/kfree/kcalloc/krealloc cycle verified (%zu KiB free)\r\n",
                 heap_get_free_size() / 1024);
+    }
+
+    // PIC (Programmable Interrupt Controller) Disable
+    pic_disable();
+
+    // Local APIC & APIC Timer (100 Hz = 10 ms period)
+    if (lapic_init(boot_info))
+    {
+        apic_timer_init(100);
+
+        // Enable hardware interrupts
+        sti();
+        kprintf("[ OK ] Hardware interrupts enabled (STI)\r\n");
+
+        // Verify timer interrupt is firing
+        timer_sleep_ms(50);
+        kprintf("[ TEST ] APIC Timer verified (50 ms sleep, %lu ticks elapsed)\r\n", timer_get_ticks());
     }
 
     // Framebuffer Double Buffering

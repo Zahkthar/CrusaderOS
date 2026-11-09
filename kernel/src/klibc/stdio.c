@@ -359,7 +359,14 @@ int snprintf(char *buffer, size_t size, const char *format, ...)
     return ret;
 }
 
-#define SPRINTF_MAX_SAFE_SIZE 4096
+int vsprintf(char *buffer, const char *format, va_list args)
+{
+    if (buffer == NULL || format == NULL)
+    {
+        return -1;
+    }
+    return vsnprintf(buffer, (size_t)-1, format, args);
+}
 
 int sprintf(char *buffer, const char *format, ...)
 {
@@ -370,7 +377,7 @@ int sprintf(char *buffer, const char *format, ...)
 
     va_list args;
     va_start(args, format);
-    int ret = vsnprintf(buffer, SPRINTF_MAX_SAFE_SIZE, format, args);
+    int ret = vsprintf(buffer, format, args);
     va_end(args);
     return ret;
 }

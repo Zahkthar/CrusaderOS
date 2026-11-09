@@ -171,7 +171,7 @@ static inline void sti(void)
 
 static inline void hlt(void)
 {
-    asm volatile("hlt");
+    asm volatile("hlt" ::: "memory");
 }
 
 static inline void hcf(void)

@@ -7,6 +7,7 @@
 #include "memory/pmm.h"
 #include "memory/vmm.h"
 #include "sys/cpu.h"
+#include "sys/spinlock.h"
 
 // +--------------------+
 // | DEFINES AND MACROS |
@@ -31,6 +32,8 @@ typedef struct HeapBlock
 // +--------------------+
 // | INTERNAL VARIABLES |
 // +--------------------+
+
+static Spinlock s_heap_lock = SPINLOCK_INIT;
 
 static HeapBlock *s_first_block = NULL;
 static uint64_t s_heap_start = KERNEL_HEAP_START;
@@ -58,6 +61,7 @@ static bool heap_expand(size_t min_bytes)
     }
 
     uint64_t new_pages_vaddr = s_heap_end;
+    size_t pages_allocated = 0;
 
     for (size_t i = 0; i < required_pages; i++)
     {
@@ -65,6 +69,18 @@ static bool heap_expand(size_t min_bytes)
         if (phys == NULL)
         {
             kprintf("[ ERROR ] Heap: PMM out of memory while expanding heap!\r\n");
+            for (size_t j = 0; j < pages_allocated; j++)
+            {
+                uint64_t vaddr = new_pages_vaddr + (j * PAGE_SIZE);
+                uint64_t paddr = vmm_virt_to_phys(vmm_get_kernel_directory(), vaddr);
+                vmm_unmap_page(vmm_get_kernel_directory(), vaddr);
+                if (paddr != 0)
+                {
+                    pmm_free_page((void *)(uintptr_t)paddr);
+                }
+            }
+            s_heap_end = new_pages_vaddr;
+            s_heap_total_size -= (pages_allocated * PAGE_SIZE);
             return false;
         }
 
@@ -73,11 +89,24 @@ static bool heap_expand(size_t min_bytes)
         {
             pmm_free_page(phys);
             kprintf("[ ERROR ] Heap: VMM mapping failed while expanding heap!\r\n");
+            for (size_t j = 0; j < pages_allocated; j++)
+            {
+                uint64_t vaddr = new_pages_vaddr + (j * PAGE_SIZE);
+                uint64_t paddr = vmm_virt_to_phys(vmm_get_kernel_directory(), vaddr);
+                vmm_unmap_page(vmm_get_kernel_directory(), vaddr);
+                if (paddr != 0)
+                {
+                    pmm_free_page((void *)(uintptr_t)paddr);
+                }
+            }
+            s_heap_end = new_pages_vaddr;
+            s_heap_total_size -= (pages_allocated * PAGE_SIZE);
             return false;
         }
 
         s_heap_end += PAGE_SIZE;
         s_heap_total_size += PAGE_SIZE;
+        pages_allocated++;
     }
 
     HeapBlock *new_block = (HeapBlock *)new_pages_vaddr;
@@ -129,6 +158,17 @@ static void split_block(HeapBlock *block, size_t size)
         }
         block->next = remainder;
         block->size = size;
+
+        // Fusionner le remainder avec le bloc suivant s'il est libre
+        if (remainder->next != NULL && remainder->next->is_free)
+        {
+            remainder->size += sizeof(HeapBlock) + remainder->next->size;
+            remainder->next = remainder->next->next;
+            if (remainder->next != NULL)
+            {
+                remainder->next->prev = remainder;
+            }
+        }
     }
 }
 
@@ -188,11 +228,14 @@ void *kmalloc(size_t size)
 
     size = align_up(size, KERNEL_HEAP_ALIGNMENT);
 
+    uint64_t flags = spinlock_acquire_irqsave(&s_heap_lock);
+
     HeapBlock *curr = s_first_block;
     while (curr != NULL)
     {
         if (curr->magic != HEAP_MAGIC)
         {
+            spinlock_release_irqrestore(&s_heap_lock, flags);
             kprintf("[ FATAL ] Heap corruption detected in kmalloc! (magic: 0x%016lx)\r\n", curr->magic);
             hcf();
         }
@@ -202,6 +245,7 @@ void *kmalloc(size_t size)
             split_block(curr, size);
             curr->is_free = 0;
             s_heap_used_size += curr->size;
+            spinlock_release_irqrestore(&s_heap_lock, flags);
             return (void *)((uint8_t *)curr + sizeof(HeapBlock));
         }
 
@@ -211,6 +255,7 @@ void *kmalloc(size_t size)
     // Aucun bloc libre suffisant : étendre le tas
     if (!heap_expand(size))
     {
+        spinlock_release_irqrestore(&s_heap_lock, flags);
         return NULL;
     }
 
@@ -223,11 +268,13 @@ void *kmalloc(size_t size)
             split_block(curr, size);
             curr->is_free = 0;
             s_heap_used_size += curr->size;
+            spinlock_release_irqrestore(&s_heap_lock, flags);
             return (void *)((uint8_t *)curr + sizeof(HeapBlock));
         }
         curr = curr->next;
     }
 
+    spinlock_release_irqrestore(&s_heap_lock, flags);
     return NULL;
 }
 
@@ -238,23 +285,36 @@ void kfree(void *ptr)
         return;
     }
 
+    uint64_t flags = spinlock_acquire_irqsave(&s_heap_lock);
+
     HeapBlock *block = (HeapBlock *)((uint8_t *)ptr - sizeof(HeapBlock));
 
     if (block->magic != HEAP_MAGIC)
     {
+        spinlock_release_irqrestore(&s_heap_lock, flags);
         kprintf("[ FATAL ] Heap corruption or invalid pointer in kfree! (magic: 0x%016lx)\r\n", block->magic);
         hcf();
     }
 
     if (block->is_free)
     {
+        spinlock_release_irqrestore(&s_heap_lock, flags);
         kprintf("[ WARN ] Double free detected on pointer %p!\r\n", ptr);
         return;
     }
 
     block->is_free = 1;
-    s_heap_used_size -= block->size;
+    if (s_heap_used_size >= block->size)
+    {
+        s_heap_used_size -= block->size;
+    }
+    else
+    {
+        s_heap_used_size = 0;
+    }
     coalesce_block(block);
+
+    spinlock_release_irqrestore(&s_heap_lock, flags);
 }
 
 void *kcalloc(size_t num, size_t size)
@@ -295,11 +355,16 @@ void *krealloc(void *ptr, size_t new_size)
 
     new_size = align_up(new_size, KERNEL_HEAP_ALIGNMENT);
 
+    uint64_t flags = spinlock_acquire_irqsave(&s_heap_lock);
     if (block->size >= new_size)
     {
+        size_t old_size = block->size;
         split_block(block, new_size);
+        s_heap_used_size -= (old_size - block->size);
+        spinlock_release_irqrestore(&s_heap_lock, flags);
         return ptr;
     }
+    spinlock_release_irqrestore(&s_heap_lock, flags);
 
     void *new_ptr = kmalloc(new_size);
     if (new_ptr == NULL)

@@ -5,10 +5,13 @@
 #include "klibc/stdio.h"
 #include "klibc/string.h"
 #include "sys/cpu.h"
+#include "sys/spinlock.h"
 
 // +--------------------+
 // | INTERNAL VARIABLES |
 // +--------------------+
+
+static Spinlock s_pmm_lock = SPINLOCK_INIT;
 
 static uint8_t *s_bitmap = NULL;
 static size_t s_total_pages = 0;
@@ -160,8 +163,11 @@ void pmm_init(const BootInfo *boot_info)
 
 void *pmm_alloc_page(void)
 {
+    uint64_t flags = spinlock_acquire_irqsave(&s_pmm_lock);
+
     if (s_free_pages == 0)
     {
+        spinlock_release_irqrestore(&s_pmm_lock, flags);
         return NULL;
     }
 
@@ -183,16 +189,18 @@ void *pmm_alloc_page(void)
             s_free_pages--;
             s_used_pages++;
             s_last_allocated_index = idx + 1;
+            spinlock_release_irqrestore(&s_pmm_lock, flags);
             return (void *)(uintptr_t)(idx * PAGE_SIZE);
         }
     }
 
+    spinlock_release_irqrestore(&s_pmm_lock, flags);
     return NULL;
 }
 
 void *pmm_alloc_pages(size_t count)
 {
-    if (count == 0 || s_free_pages < count)
+    if (count == 0)
     {
         return NULL;
     }
@@ -200,6 +208,14 @@ void *pmm_alloc_pages(size_t count)
     if (count == 1)
     {
         return pmm_alloc_page();
+    }
+
+    uint64_t flags = spinlock_acquire_irqsave(&s_pmm_lock);
+
+    if (s_free_pages < count)
+    {
+        spinlock_release_irqrestore(&s_pmm_lock, flags);
+        return NULL;
     }
 
     size_t consecutive = 0;
@@ -224,6 +240,7 @@ void *pmm_alloc_pages(size_t count)
                 s_free_pages -= count;
                 s_used_pages += count;
                 s_last_allocated_index = start_idx + count;
+                spinlock_release_irqrestore(&s_pmm_lock, flags);
                 return (void *)(uintptr_t)(start_idx * PAGE_SIZE);
             }
         }
@@ -233,6 +250,7 @@ void *pmm_alloc_pages(size_t count)
         }
     }
 
+    spinlock_release_irqrestore(&s_pmm_lock, flags);
     return NULL;
 }
 
@@ -251,6 +269,8 @@ void pmm_free_page(void *ptr)
         return;
     }
 
+    uint64_t flags = spinlock_acquire_irqsave(&s_pmm_lock);
+
     if (bitmap_test(idx))
     {
         bitmap_clear(idx);
@@ -261,6 +281,8 @@ void pmm_free_page(void *ptr)
             s_last_allocated_index = idx;
         }
     }
+
+    spinlock_release_irqrestore(&s_pmm_lock, flags);
 }
 
 void pmm_free_pages(void *ptr, size_t count)
@@ -271,10 +293,24 @@ void pmm_free_pages(void *ptr, size_t count)
     }
 
     uintptr_t addr = (uintptr_t)ptr;
+    uint64_t flags = spinlock_acquire_irqsave(&s_pmm_lock);
+
     for (size_t i = 0; i < count; i++)
     {
-        pmm_free_page((void *)(addr + i * PAGE_SIZE));
+        size_t idx = (addr + i * PAGE_SIZE) / PAGE_SIZE;
+        if (idx < s_total_pages && bitmap_test(idx))
+        {
+            bitmap_clear(idx);
+            s_free_pages++;
+            s_used_pages--;
+            if (idx < s_last_allocated_index)
+            {
+                s_last_allocated_index = idx;
+            }
+        }
     }
+
+    spinlock_release_irqrestore(&s_pmm_lock, flags);
 }
 
 size_t pmm_get_total_memory(void)
