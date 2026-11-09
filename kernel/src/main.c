@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "drivers/keyboard.h"
 #include "drivers/serial.h"
 #include "graphics/colors.h"
 #include "graphics/console.h"
@@ -123,8 +124,7 @@ void kmain(void)
 
         kfree(buf1);
         kfree(buf2);
-        kprintf("[ OK ] kmalloc/kfree/kcalloc/krealloc cycle verified (%zu KiB free)\r\n",
-                heap_get_free_size() / 1024);
+        kprintf("[ OK ] kmalloc/kfree/kcalloc/krealloc cycle verified (%zu KiB free)\r\n", heap_get_free_size() / 1024);
     }
 
     // PIC (Programmable Interrupt Controller) Disable
@@ -159,21 +159,42 @@ void kmain(void)
     kprintf("[ OK ] Graphical TTY Console initialized (%d x %d chars, 8x16 font)\r\n", console_get_cols(),
             console_get_rows());
 
+    // PS/2 Keyboard Driver Initialization (Phase 3)
+    keyboard_init();
+    keyboard_set_keymap(KEYMAP_AZERTY);
+
     // Graphical and Font Engine test badge
     framebuffer_fillRect(framebuffer, (Rect){(int)framebuffer->width - 240, 20, 220, 70}, RGB_BLUE);
     framebuffer_drawRect(framebuffer, (Rect){(int)framebuffer->width - 240, 20, 220, 70}, RGB_CYAN);
     font_draw_string(framebuffer, (int)framebuffer->width - 230, 30, "CrusaderOS 64-bit", RGB_WHITE, RGB_BLUE);
-    font_draw_string(framebuffer, (int)framebuffer->width - 230, 50, "Phase 2: TTY Active", RGB_YELLOW, RGB_BLUE);
-    font_draw_string(framebuffer, (int)framebuffer->width - 230, 70, "8x16 Font Engine", RGB_GREEN, RGB_BLUE);
+    font_draw_string(framebuffer, (int)framebuffer->width - 230, 50, "Phase 3: Input Active", RGB_YELLOW, RGB_BLUE);
+    font_draw_string(framebuffer, (int)framebuffer->width - 230, 70, "8x16 Font & PS/2", RGB_GREEN, RGB_BLUE);
     framebuffer_swap(framebuffer);
 
     kprintf("[ OK ] Graphical test pattern and font rendering verified.\r\n");
     kprintf("[ TEST ] Console text rendering verified on display (%d cols x %d rows)\r\n", console_get_cols(),
             console_get_rows());
-    kprintf("[ OK ] CrusaderOS Kernel initialization complete. System idle.\r\n");
+    kprintf("[ OK ] CrusaderOS Kernel initialization complete. Interactive prompt ready.\r\n");
+    kprintf("\r\nCrusaderOS> ");
 
     for (;;)
     {
+        char c = keyboard_getchar_nonblock();
+        if (c != '\0')
+        {
+            if (c == '\r' || c == '\n')
+            {
+                kprintf("\r\nCrusaderOS> ");
+            }
+            else if (c == '\b')
+            {
+                kprintf("\b \b");
+            }
+            else
+            {
+                kprintf("%c", c);
+            }
+        }
         hlt();
     }
 }

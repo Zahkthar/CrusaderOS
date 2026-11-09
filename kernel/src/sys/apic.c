@@ -13,25 +13,25 @@
 #define APIC_BASE_ENABLE (1ULL << 11)
 
 // Local APIC Register Offsets
-#define LAPIC_REG_ID                0x0020
-#define LAPIC_REG_VERSION           0x0030
-#define LAPIC_REG_TPR               0x0080
-#define LAPIC_REG_EOI               0x00B0
-#define LAPIC_REG_LDR               0x00D0
-#define LAPIC_REG_DFR               0x00E0
-#define LAPIC_REG_SVR               0x00F0
-#define LAPIC_REG_ESR               0x0280
-#define LAPIC_REG_LVT_TIMER         0x0320
-#define LAPIC_REG_LVT_LINT0         0x0350
-#define LAPIC_REG_LVT_LINT1         0x0360
-#define LAPIC_REG_LVT_ERROR         0x0370
-#define LAPIC_REG_TIMER_INIT_COUNT  0x0380
-#define LAPIC_REG_TIMER_CURR_COUNT  0x0390
-#define LAPIC_REG_TIMER_DIV_CONFIG  0x03E0
+#define LAPIC_REG_ID               0x0020
+#define LAPIC_REG_VERSION          0x0030
+#define LAPIC_REG_TPR              0x0080
+#define LAPIC_REG_EOI              0x00B0
+#define LAPIC_REG_LDR              0x00D0
+#define LAPIC_REG_DFR              0x00E0
+#define LAPIC_REG_SVR              0x00F0
+#define LAPIC_REG_ESR              0x0280
+#define LAPIC_REG_LVT_TIMER        0x0320
+#define LAPIC_REG_LVT_LINT0        0x0350
+#define LAPIC_REG_LVT_LINT1        0x0360
+#define LAPIC_REG_LVT_ERROR        0x0370
+#define LAPIC_REG_TIMER_INIT_COUNT 0x0380
+#define LAPIC_REG_TIMER_CURR_COUNT 0x0390
+#define LAPIC_REG_TIMER_DIV_CONFIG 0x03E0
 
-#define LAPIC_TIMER_MODE_PERIODIC   (1 << 17)
-#define LAPIC_TIMER_MASKED          (1 << 16)
-#define LAPIC_SVR_SOFTWARE_ENABLE   (1 << 8)
+#define LAPIC_TIMER_MODE_PERIODIC (1 << 17)
+#define LAPIC_TIMER_MASKED        (1 << 16)
+#define LAPIC_SVR_SOFTWARE_ENABLE (1 << 8)
 
 // PIT Ports for timer calibration
 #define PIT_CHANNEL2_DATA 0x42
@@ -118,8 +118,8 @@ bool lapic_init(const BootInfo *boot_info)
     // Enable APIC by setting bit 8 in Spurious Interrupt Vector Register
     lapic_write(LAPIC_REG_SVR, LAPIC_SVR_SOFTWARE_ENABLE | APIC_SPURIOUS_VECTOR);
 
-    // Mask LINT0 and LINT1 lines
-    lapic_write(LAPIC_REG_LVT_LINT0, 0x10000);
+    // Configure LINT0 as ExtINT (0x0700) to route legacy PIC interrupts (Virtual Wire Mode)
+    lapic_write(LAPIC_REG_LVT_LINT0, 0x0700);
     lapic_write(LAPIC_REG_LVT_LINT1, 0x10000);
 
     // Clear error register

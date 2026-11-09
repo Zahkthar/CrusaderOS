@@ -58,6 +58,40 @@ void pic_disable(void)
     kprintf("[ OK ] Legacy 8259 PIC disabled and masked\r\n");
 }
 
+void pic_unmask_irq(uint8_t irq)
+{
+    uint16_t port;
+    if (irq < 8)
+    {
+        port = PIC1_DATA;
+    }
+    else
+    {
+        port = PIC2_DATA;
+        irq -= 8;
+    }
+    uint8_t value = inb(port) & (uint8_t)~(1 << irq);
+    outb(port, value);
+    io_wait();
+}
+
+void pic_mask_irq(uint8_t irq)
+{
+    uint16_t port;
+    if (irq < 8)
+    {
+        port = PIC1_DATA;
+    }
+    else
+    {
+        port = PIC2_DATA;
+        irq -= 8;
+    }
+    uint8_t value = inb(port) | (uint8_t)(1 << irq);
+    outb(port, value);
+    io_wait();
+}
+
 void pic_send_eoi(uint8_t irq)
 {
     if (irq >= 8)
